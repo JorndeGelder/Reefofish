@@ -1,7 +1,7 @@
 ---
-title: "Paula's Internship 2024 - 2025. The effect of bleaching on reef fish"
-author: "Paula Hernández"
-date: "14/01/2025"
+title: "Jorns thesis 2025-2026. The long-term impact of reef design on herbivorous fish biomass and mean size"
+author: "Jorn de Gelder"
+date: "16/09/2025"
 output: html_document
 ---
 
