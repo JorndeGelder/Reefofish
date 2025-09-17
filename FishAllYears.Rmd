@@ -1,0 +1,1225 @@
+=======
+title: "Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size"
+author: "Jorn de Gelder"
+date: "17/09/2025"
+>>>>>>> Stashed changes
+output: html_document
+---
+
+#imaginary update test for github
+
+#if on Asus laptop (Jorn)
+#setwd("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/R/bleachingFish")
+
+#if on MSI laptop (Jorn)
+setwd("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/R/bleachingFish")
+
+# Setup
+```{r setup}
+rm(list=ls()) # Clear workspace
+knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
+options(scipen = 99) # Have all numbers in non-scientific notation
+
+library(readxl) # Join data frames (vlookup)
+library(cowplot) # Combine plots
+library(data.table)
+library(ggthemes) # pretty plots
+library(flextable) # Layout word table
+library(tidyverse) # Beta regression
+library(vegan) # Export Excel
+library(gridExtra)
+library(emmeans) # Select text from string
+library(lmerTest) # GLS
+library(officer) # Move table into word
+library(gridGraphics) # Combine base and ggplots
+library(tidyxl) # Read in coloured cells Excel
+library(openxlsx)
+library(car) # glm model validation
+library(viridis) # Convert data from wide to long
+library(pairwiseAdonis)
+library(writexl) # Export Excel
+
+# Function to facilitate averaging data frame
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      n  = length(x[[col]]),
+      sd = sd(x[[col]], na.rm=TRUE),
+      sum  = sum(x[[col]]),
+      se = sd(x[[col]], na.rm=TRUE)/sqrt(length(x[[col]])))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- plyr::rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+
+# Set colours for Treatments
+co <- c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733") # Added "#FF5733"
+
+
+```
+
+# Load RAW data (ONLY NEED TO RUN THIS ONCE: Takes about 30 mins)
+```{r data load, warning= FALSE}
+
+# ---- DATA 2017-2022 ----
+## Load
+### 2017-2018
+fishRAW.2018 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2017-2018.xlsm", sheet = 3, skip = 6))
+fish.2018 <- fishRAW.2018[!is.na(fishRAW.2018$Species),] # Remove irrelevant row
+fish.2018 <- select(fish.2018, -c(1, 3:11)) # Remove irrelevant columns
+fish.2018$Species <- sub("\\.", "", fish.2018$Species) # Remove points from species names
+
+### 2019
+fishRAW.2019 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2019.xlsm", sheet = 3, skip = 6))
+fish.2019 <- fishRAW.2019[!is.na(fishRAW.2019$Species),] # Remove irrelevant row
+fish.2019 <- select(fish.2019, -c(1, 3:11)) # Remove irrelevant columns
+fish.2019$Species <- sub("\\.", "", fish.2019$Species) # Remove points from species names
+
+### 2020
+fishRAW.2020 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2020.xlsm", sheet = 3, skip = 6))
+fish.2020 <- fishRAW.2020[!is.na(fishRAW.2020$Species),] # Remove irrelevant row
+fish.2020 <- select(fish.2020, -c(1, 3:11)) # Remove irrelevant columns
+fish.2020$Species <- sub("\\.", "", fish.2020$Species) # Remove points from species names
+
+### 2021-2022
+fishRAW.2021 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2021-2022.xlsm", sheet = 3, skip = 6))
+fish.2021 <- fishRAW.2021[!is.na(fishRAW.2021$Species),] # Remove irrelevant row
+fish.2021 <- select(fish.2021, -c(1, 3:11)) # Remove irrelevant columns
+fish.2021$Species <- sub("\\.", "", fish.2021$Species) # Remove points from species names
+
+## Merge all years
+fish.2017_2022 <- left_join(fish.2021, fish.2020, by = "Species")
+fish.2017_2022 <- left_join(fish.2017_2022, fish.2019, by = "Species")
+fish.2017_2022 <- left_join(fish.2017_2022, fish.2018, by = "Species")
+
+## Get rid of the columns not needed (pre-calculated biomasses)
+fish.2017_2022 <- fish.2017_2022[, -grep(pattern= 'g_', colnames(fish.2017_2022))]
+fish.2017_2022 <- fish.2017_2022[, -grep(pattern='kgha', colnames(fish.2017_2022))]
+fish.2017_2022 <- fish.2017_2022[, -grep(pattern='TOT', colnames(fish.2017_2022))]
+
+## Net NAs to 0 
+fish.2017_2022[is.na(fish.2017_2022)] <- 0
+
+## Set column names (NB: order of surveys won't match original Excel numbering anymore: start numbering at newer survey years)
+surveys.tot <- (ncol(fish.2017_2022) - 1)/13
+colname <- c("Species", paste0(rep(c("1_", "2_", "3_", "4_", "5_", "6_", "7_", "8_", "9_", "10_", "11_", "12_", "Coloured_"),
+                                     surveys.tot), rep(1:surveys.tot, each = 13)))
+colnames(fish.2017_2022) <- colname
+
+## Go to long format
+fish.2017_2022 <- setDT(fish.2017_2022)
+fish.2017_2022 <- melt(fish.2017_2022, id.vars = 'Species', variable.name = 'SurveyNo', 
+            measure.vars = patterns('^1_', '^2_', '^3_', '^4_', '^5_', '^6_',
+                                    '^7_', '^8_', '^9_', '^10_', '^11_', '^12_', '^Coloured_'),
+            value.name = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5',
+                           '25', '35', '45', '75', '125', '175', 'Coloured'))
+fish.2017_2022$Coloured[fish.2017_2022$Coloured == 0] <- 12 # Set non-coloured value (12) for missing data (new species)
+fish.2017_2022$SurveyNo <- as.numeric(fish.2017_2022$SurveyNo)
+
+### Update taxonomy for re-named species
+fish.2017_2022$Species <- ifelse(fish.2017_2022$Species == "Carangoides ferdau", "Ferdauia ferdau",
+                 ifelse(fish.2017_2022$Species == "Carangoides fulvoguttatus", "Turrum fulvoguttatum",       
+                 ifelse(fish.2017_2022$Species == "Carangoides orthogrammus", "Ferdauia orthogrammus",       
+                 ifelse(fish.2017_2022$Species == "Cetoscarus bicolor", "Cetoscarus ocellatus",       
+                 ifelse(fish.2017_2022$Species == "Chromis dimidiata", "Pycnochromis dimidiatus",       
+                 ifelse(fish.2017_2022$Species == "Chromis lepidolepis", "Azurina lepidolepis",       
+                 ifelse(fish.2017_2022$Species == "Chromis nigrura", "Pycnochromis nigrurus",       
+                 ifelse(fish.2017_2022$Species == "Chromis xutha", "Pycnochromis agilis",       
+                 ifelse(fish.2017_2022$Species == "Dascyllus aruanus", "Dascyllus abudafur",       
+                 ifelse(fish.2017_2022$Species == "Heteropriacanthus cruentatus", "Heteropriacanthus carolinus",       
+                 ifelse(fish.2017_2022$Species == "Neotrygon kuhlii", "Neotrygon indica",       
+                 ifelse(fish.2017_2022$Species == "Plectroglyphidodon lacrymatus", "Stegastes lacrymatus",       
+                 ifelse(fish.2017_2022$Species == "Pseudanthias evansi", "Mirolabrichthys evansi",       
+                 ifelse(fish.2017_2022$Species == "Ulua mentalis", "Atropis mentalis", fish.2017_2022$Species))))))))))))))
+fish.2017_2022 <- subset(fish.2017_2022, Species != "NEW SPECIES")
+
+# ==== Meta data 2017-2022 ====
+## Load
+meta.2018 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2017-2018.xlsm", sheet = "Data")) # 2018
+meta.2019 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2019.xlsm", sheet = "Data")) # 2019 
+meta.2020 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2020.xlsm", sheet = "Data")) # 2020
+meta.2021 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2021-2022.xlsm", sheet = "Data")) # 2021 
+meta.2021 <- meta.2021[!is.na(meta.2021$Date),] # Remove empty rows
+
+## Merge years
+meta.2017_2022 <- rbind(meta.2021, meta.2020, meta.2019, meta.2018)
+
+## Clean up
+meta.2017_2022$SurveyNo <- as.numeric(seq(1, surveys.tot, by = 1))
+meta.2017_2022 <- meta.2017_2022[,c("SurveyNo", "Date", "Location", "Transect", "Observer", "Area", "Comments")] # Select columns
+
+## Add meta data to main dataframe
+fish.2017_2022 <- merge(fish.2017_2022, meta.2017_2022, all.x=T, by='SurveyNo')
+
+# ==== Species information ====
+## Load and clean
+specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2024-07.xlsx", sheet = "SpeciesList"))
+specieslist$Species <- sub("\\.", "", specieslist$Species) # Remove points from species names
+specieslist <- select(specieslist, c("Species", "Diet", "a", "b"))
+
+## Add species data to main dataframe
+fish.2017_2022 <- merge(fish.2017_2022, specieslist, all.x=T, by='Species')
+
+# ==== Calculate biomass ====
+## Get Size class from wide to long
+fish.2017_2022 <- reshape2::melt(fish.2017_2022, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Diet', 'a', 'b',
+                                                           'Date', 'Location', 'Transect', 'Observer', 'Area', 'Comments'), 
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '75', '125', '175'),
+          variable.name = 'SizeClass', value.name = 'Abundance')
+
+## Calculate biomass using the length-weight formula W = a * L^b, multiply per abundance and standardize to kg/ha
+fish.2017_2022$SizeClass <- as.numeric(as.character(fish.2017_2022$SizeClass))
+fish.2017_2022$Biomass_kgha <- ((((fish.2017_2022$a * (fish.2017_2022$SizeClass ^ fish.2017_2022$b)) * fish.2017_2022$Abundance)/ fish.2017_2022$Area)/1000)* 10000
+
+## Standardize abundance
+fish.2017_2022$Abundance_m2 <- fish.2017_2022$Abundance/fish.2017_2022$Area
+
+## Cleanup
+fish.2017_2022 <- select(fish.2017_2022, - c("a", "b", "Area"))
+
+# ---- DATA 2023-2025 ----
+# NB: This data is slightly different: size classes > 60cm are now specified and colored cells not yet identified in Excel
+#!!! SET EMPTY FISH ABUNDANCE CELLS TO ZERO (AS NUMBERS!) IN EXCEL BEFORE LOADING!
+
+# ---2023-2024---
+# Get raw data and formats
+fishRaw.2023 <- xlsx_cells("Raw data/Fish surveys_DATABASE_2023-2024_0.xlsx") # Includes all sheets
+fish.2023 <- subset(fishRaw.2023, sheet == "INPUT Sheet") # Data including both Non & Instantaneous observations)
+fish.2023format <- xlsx_formats("Raw data/Fish surveys_DATABASE_2023-2024_0.xlsx") # Formats of all sheets
+
+# Identify non-instantaneous data
+## Identify coloured cells
+Fish.2023_ColouredCells <- fish.2023 %>% 
+  filter(local_format_id %in% which(!is.na(fish.2023format$local$fill$patternFill$fgColor$rgb))) %>%
+  select(address, row, col, data_type)
+## Label them 12 (instantaneous) or 11 (non-instantaneous)
+fish.2023$Coloured <- ifelse(fish.2023$address %in% Fish.2023_ColouredCells$address, 11, 12)
+
+## Tidy data
+fish.2023 <- subset(fish.2023, row > 2) # Remove first two rows row (survey number & size classes)
+fish.2023 <- select(fish.2023, c("row", "col", "character", "numeric", "Coloured")) # Select relevant columns
+Fish.2023_speciesList <- na.omit(fish.2023$character) # Save species list for later use
+fish.2023 <- select(fish.2023, -c("character")) # Remove species column
+fish.2023 <- subset(fish.2023, col > 1) # Remove species column values
+fish.2023$row <- fish.2023$row - 2 # Renumber rows to start at 1
+fish.2023$col <- fish.2023$col - 1 # Renumber columns to start at 1
+
+# To wide format
+fish.2023 <- as.data.frame(fish.2023) # Go from tibble back to dataframe
+fish.2023 <- reshape(fish.2023, idvar = c("row"), timevar = "col", direction = "wide") # To wide format (takes 2 mins)
+
+# Set column names
+fish.2023_surveys.tot <- (ncol(fish.2023) - 1)/24
+fish.2023_colname <- c("Species", paste0(rep(c("c1_", "Coloured_c1_", "c2_", "Coloured_c2_", "c3_", "Coloured_c3_", "c4_", "Coloured_c4_", "c5_", "Coloured_c5_", "c6_", "Coloured_c6_", "c7_", "Coloured_c7_", "c8_", "Coloured_c8_", "c9_", "Coloured_c9_", "c10_", "Coloured_c10_", "c11num_", "Coloured_c11num_", "c11size_", "Coloured_c11size_"), fish.2023_surveys.tot), rep(1:fish.2023_surveys.tot, each = 24)))
+colnames(fish.2023) <- fish.2023_colname
+
+# To long format
+fish.2023 <- setDT(fish.2023)
+fish.2023 <- melt(fish.2023, 
+            id.vars = 'Species', variable.name = 'SurveyNo', 
+            measure.vars = patterns('^c1_', "Coloured_c1_", '^c2_', "Coloured_c2_", '^c3_', "Coloured_c3_", '^c4_', "Coloured_c4_", '^c5_', "Coloured_c5_", '^c6_', "Coloured_c6_", '^c7_', "Coloured_c7_", '^c8_', "Coloured_c8_", '^c9_', "Coloured_c9_", '^c10_', "Coloured_c10_", '^c11num_', "Coloured_c11num_", '^c11size_', "Coloured_c11size_"),
+            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '75', 'Coloured_75',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
+
+# Check & summarize if any of the size classes had a coloured cell
+fish.2023$Coloured <- ifelse(fish.2023$Coloured_1.25 + fish.2023$Coloured_3.75 + fish.2023$Coloured_6.25 + fish.2023$Coloured_8.75 + fish.2023$Coloured_12.5 + fish.2023$Coloured_17.5 + fish.2023$Coloured_25 + fish.2023$Coloured_35 + fish.2023$Coloured_45 + fish.2023$Coloured_75 + fish.2023$Coloured_Abundance_11 + fish.2023$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2023 <- dplyr::select(fish.2023, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_75", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
+
+# Get Size class from wide to long
+fish.2023 <- reshape2::melt(fish.2023, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Abundance_11', 'SizeClass_11'), 
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '75'),
+          variable.name = 'SizeClass', value.name = 'Abundance')
+
+# ==== Add meta data ====
+## Re-add species names in data frame
+fish.2023$Species <- Fish.2023_speciesList # Added based on original order (!)
+fish.2023$Species <- sub("\\.", "", fish.2023$Species) # Remove points from species names
+
+## Species metadata
+fish.2023 <- merge(fish.2023, specieslist, all.x=T, by='Species') # Combine data and specieslist data frames
+fish.2023$SizeClass <- as.numeric(paste(fish.2023$SizeClass)) # Set a numeric Length
+
+## Add survey info
+meta.2023 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2023-2024_0.xlsx", sheet = "Data")) 
+meta.2023 <- meta.2023[!is.na(meta.2023$Date),] # Remove empty rows
+colnames(meta.2023)[1] <- "SurveyNo" 
+meta.2023 <- meta.2023[,c("SurveyNo", "Date", "Location", "Transect", "Observer", "Area", "Comments")] # Select relevant columns
+fish.2023 <- merge(fish.2023, meta.2023, all.x=T, by='SurveyNo')
+
+# ==== Calculate biomass ====
+## For small size classes:
+fish.2023$Biomass_ha <- ((((fish.2023$a * (fish.2023$SizeClass ^ fish.2023$b)) * fish.2023$Abundance)/ fish.2023$Area)/1000)* 10000
+## For large size class (>11):
+fish.2023$Abundance_11 <- ifelse(fish.2023$SizeClass == 75, fish.2023$Abundance_11, 0) # Remove duplicates
+fish.2023$Biomass_ha_11 <- ((((fish.2023$a * (fish.2023$SizeClass_11 ^ fish.2023$b)) * fish.2023$Abundance_11)/ fish.2023$Area)/1000)* 10000
+## Add size classes together
+fish.2023$Biomass_kgha <- fish.2023$Biomass_ha + fish.2023$Biomass_ha_11
+fish.2023$Abundance <- fish.2023$Abundance + fish.2023$Abundance_11
+
+## Standardize abundance
+fish.2023$Abundance_m2 <- fish.2023$Abundance/fish.2023$Area
+
+## Cleanup
+fish.2023 <- select(fish.2023, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
+fish.2023 <- fish.2023 %>% drop_na(Biomass_kgha) # Drop empty rows for surveys not yet done
+
+# ---2024-2025---
+
+# Change empty cells into zeros (needed to correctly read in the data in consecutive steps)
+## Read observation block only (starting from row 3, column 2)
+input_file <- "Raw data/Fish surveys_DATABASE_2024-2025 (2025-05).xlsx"   # your original, styled file
+raw_obs <- read_excel(input_file, sheet = "INPUT Sheet", col_names = FALSE) # Takes ~15 mins
+obs_block <- raw_obs[-c(1, 2), -1, drop = FALSE]  # remove first two rows and first column
+obs_block <- as.data.frame(obs_block, stringsAsFactors = FALSE)
+
+# Step 2: Clean observation block (convert to numeric, replace blanks with 0)
+obs_block[] <- lapply(obs_block, function(col) {
+  col[col == ""] <- NA
+  suppressWarnings(as.numeric(replace(col, is.na(col), 0)))
+})
+
+# Step 3: Load the workbook with formatting intact
+wb <- loadWorkbook(input_file) # Takes a few minutes
+
+# Step 4: Write cleaned values into the same cells (preserving formatting)
+writeData(
+  wb, 
+  sheet = "INPUT Sheet", 
+  x = obs_block, 
+  startRow = 3, 
+  startCol = 2, 
+  colNames = FALSE
+)
+
+## Step 5: Save updated file
+saveWorkbook(wb, "Raw data/Fish surveys_DATABASE_2024-2025 (2025-05)_0.xlsx", overwrite = TRUE)
+
+# Get raw data and formats
+fishRaw.2024 <- xlsx_cells("Raw data/Fish surveys_DATABASE_2024-2025 (2025-05)_0.xlsx") # Includes all sheets and styles
+fish.2024 <- subset(fishRaw.2024, sheet == "INPUT Sheet") # Data including both Non & Instantaneous observations)
+fish.2024format <- xlsx_formats("Raw data/Fish surveys_DATABASE_2024-2025 (2025-05)_0.xlsx") # Formats of all sheets
+
+# Identify non-instantaneous data
+## Identify coloured cells
+Fish.2024_ColouredCells <- fish.2024 %>% 
+  filter(local_format_id %in% which(!is.na(fish.2024format$local$fill$patternFill$fgColor$rgb))) %>%
+  select(address, row, col, data_type)
+## Label them 12 (instantaneous) or 11 (non-instantaneous)
+fish.2024$Coloured <- ifelse(fish.2024$address %in% Fish.2024_ColouredCells$address, 11, 12)
+
+## Tidy data
+fish.2024 <- subset(fish.2024, row > 2) # Remove first two rows row (survey number & size classes)
+fish.2024 <- select(fish.2024, c("row", "col", "character", "numeric", "Coloured")) # Select relevant columns
+Fish.2024_speciesList <- na.omit(fish.2024$character) # Save species list for later use
+fish.2024 <- select(fish.2024, -c("character")) # Remove species column
+fish.2024 <- subset(fish.2024, col > 1) # Remove species column values
+fish.2024$row <- fish.2024$row - 2 # Renumber rows to start at 1
+fish.2024$col <- fish.2024$col - 1 # Renumber columns to start at 1
+
+# To wide format
+fish.2024 <- as.data.frame(fish.2024) # Go from tibble back to dataframe
+fish.2024 <- reshape(fish.2024, idvar = c("row"), timevar = "col", direction = "wide") # To wide format (takes 2 mins)
+
+# Set column names
+fish.2024_surveys.tot <- (ncol(fish.2024) - 1)/24
+fish.2024_colname <- c("Species", paste0(rep(c("c1_", "Coloured_c1_", "c2_", "Coloured_c2_", "c3_", "Coloured_c3_", "c4_", "Coloured_c4_", "c5_", "Coloured_c5_", "c6_", "Coloured_c6_", "c7_", "Coloured_c7_", "c8_", "Coloured_c8_", "c9_", "Coloured_c9_", "c10_", "Coloured_c10_", "c11num_", "Coloured_c11num_", "c11size_", "Coloured_c11size_"), fish.2024_surveys.tot), rep(1:fish.2024_surveys.tot, each = 24)))
+colnames(fish.2024) <- fish.2024_colname
+
+# To long format
+fish.2024 <- setDT(fish.2024)
+fish.2024 <- melt(fish.2024, 
+            id.vars = 'Species', variable.name = 'SurveyNo', 
+            measure.vars = patterns('^c1_', "Coloured_c1_", '^c2_', "Coloured_c2_", '^c3_', "Coloured_c3_", '^c4_', "Coloured_c4_", '^c5_', "Coloured_c5_", '^c6_', "Coloured_c6_", '^c7_', "Coloured_c7_", '^c8_', "Coloured_c8_", '^c9_', "Coloured_c9_", '^c10_', "Coloured_c10_", '^c11num_', "Coloured_c11num_", '^c11size_', "Coloured_c11size_"),
+            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '75', 'Coloured_75',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
+
+# Check & summarize if any of the size classes had a coloured cell
+fish.2024$Coloured <- ifelse(fish.2024$Coloured_1.25 + fish.2024$Coloured_3.75 + fish.2024$Coloured_6.25 + fish.2024$Coloured_8.75 + fish.2024$Coloured_12.5 + fish.2024$Coloured_17.5 + fish.2024$Coloured_25 + fish.2024$Coloured_35 + fish.2024$Coloured_45 + fish.2024$Coloured_75 + fish.2024$Coloured_Abundance_11 + fish.2024$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2024 <- dplyr::select(fish.2024, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_75", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
+
+# Get Size class from wide to long
+fish.2024 <- reshape2::melt(fish.2024, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Abundance_11', 'SizeClass_11'), 
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '75'),
+          variable.name = 'SizeClass', value.name = 'Abundance')
+
+# ==== Add meta data ====
+## Re-add species names in data frame
+fish.2024$Species <- Fish.2024_speciesList # Added based on original order (!)
+fish.2024$Species <- sub("\\.", "", fish.2024$Species) # Remove points from species names
+
+## Species metadata
+fish.2024 <- merge(fish.2024, specieslist, all.x=T, by='Species') # Combine data and specieslist data frames
+fish.2024$SizeClass <- as.numeric(paste(fish.2024$SizeClass)) # Set a numeric Length
+
+## Add survey info
+meta.2024 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2024-2025 (2025-05)_0.xlsx", sheet = "Data")) 
+meta.2024 <- meta.2024[!is.na(meta.2024$Date),] # Remove empty rows
+colnames(meta.2024)[1] <- "SurveyNo" 
+meta.2024 <- meta.2024[,c("SurveyNo", "Date", "Location", "Transect", "Observer", "Area", "Comments")] # Select relevant columns
+fish.2024 <- merge(fish.2024, meta.2024, all.x=T, by='SurveyNo')
+
+# ==== Calculate biomass ====
+## For small size classes:
+fish.2024$Biomass_ha <- ((((fish.2024$a * (fish.2024$SizeClass ^ fish.2024$b)) * fish.2024$Abundance)/ fish.2024$Area)/1000)* 10000
+## For large size class (>11):
+fish.2024$Abundance_11 <- ifelse(fish.2024$SizeClass == 75, fish.2024$Abundance_11, 0) # Remove duplicates
+fish.2024$Biomass_ha_11 <- ((((fish.2024$a * (fish.2024$SizeClass_11 ^ fish.2024$b)) * fish.2024$Abundance_11)/ fish.2024$Area)/1000)* 10000
+## Add size classes together
+fish.2024$Biomass_kgha <- fish.2024$Biomass_ha + fish.2024$Biomass_ha_11
+fish.2024$Abundance <- fish.2024$Abundance + fish.2024$Abundance_11
+
+## Standardize abundance
+fish.2024$Abundance_m2 <- fish.2024$Abundance/fish.2024$Area
+
+## Cleanup
+fish.2024 <- select(fish.2024, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
+fish.2024 <- fish.2024 %>% drop_na(Abundance_m2) # Drop empty rows for surveys not yet done
+
+# ---- MERGE DATASETS ----
+## Make order match with older dataset
+### 2023
+fish.2023 <- dplyr::select(fish.2023, c("SurveyNo", "Species", "Coloured", "Diet", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
+## Update survey numbers to be continuous
+fish.2023$SurveyNo <- as.numeric(fish.2023$SurveyNo)
+fish.2023$SurveyNo <- fish.2023$SurveyNo + surveys.tot
+
+### 2024
+fish.2024 <- dplyr::select(fish.2024, c("SurveyNo", "Species", "Coloured", "Diet", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
+## Update survey numbers to be continuous
+fish.2024$SurveyNo <- as.numeric(fish.2024$SurveyNo)
+fish.2024$SurveyNo <- fish.2024$SurveyNo + surveys.tot
+
+## Merge
+fish <- rbind(fish.2017_2022, fish.2023, fish.2024)
+
+## Make size classes match (with size class 10 anything >50 cm)
+fish$SizeClass <- ifelse(fish$SizeClass == 1.25, 1,
+                  ifelse(fish$SizeClass == 3.75, 2,
+                  ifelse(fish$SizeClass == 6.25, 3,       
+                  ifelse(fish$SizeClass == 8.75, 4,       
+                  ifelse(fish$SizeClass == 12.5, 5,       
+                  ifelse(fish$SizeClass == 17.5, 6,       
+                  ifelse(fish$SizeClass == 25, 7,       
+                  ifelse(fish$SizeClass == 35, 8,       
+                  ifelse(fish$SizeClass == 45, 9, 10)))))))))
+
+# Match species
+## Remove cryptic fish
+fish <- fish[!(fish$Species=='Atherinomorus sp' | fish$Species=='Ablabys binotatus' | fish$Species=='Amblyeleotris sp' |
+        fish$Species=='Antennarius sp' | fish$Species=='Exallias brevis' | fish$Species=='Gymnomuraena zebra' |
+        fish$Species=='Gymnothorax griseus' | fish$Species=='Gymnothorax javanicus' | fish$Species=='Gymnothorax meleagris' |
+        fish$Species=='Gymnothorax sp' | fish$Species=='Inimicus filamentosus' | fish$Species=='Myrichthys colubrinus' |
+        fish$Species=='Myrichthys maculosus' | fish$Species=='Paracirrhites arcatus' | fish$Species=='Paracirrhites forsteri' |
+        fish$Species=='Parapercis hexophtalma' | fish$Species=='Parapercis sp' | fish$Species=='Scorpaenopsis sp' |
+        fish$Species=='Scuticaria tigrina' | fish$Species=='Synodus sp' | fish$Species=='Trachyrhamphus bicoarctatus' |
+        fish$Species=='Unknown blenny' | fish$Species=='Valenciennea helsdingenii' | fish$Species=='Valenciennea strigata'),]
+
+## Update a few species names/identifications
+fish$Species[fish$Species == "Unknown parrotfish"] <- "Scarus sp"
+fish$Species[fish$Species == "Pomacentrus philippinus"] <- "Neopomacentrus cyanomos"
+fish$Species[fish$Species == "Pempheris nesogallica"] <- "Pempheris sp"
+
+## Fill in missing species on both sides
+### Set apart metadata first
+meta.all <- dplyr::select(fish, c("SurveyNo", "Date", "Location", "Transect", "Observer", "Comments"))
+meta.all <- meta.all[!duplicated(meta.all[,c('SurveyNo')]),]
+### Reduce dataframe to values only
+fish <- dplyr::select(fish, -c("Diet","Date", "Location", "Transect", "Observer", "Comments"))
+### Fill in missing species with 0 values
+fish <- fish %>% complete(SurveyNo, Species, SizeClass)
+fish$Coloured[is.na(fish$Coloured)] <- 12
+fish$Abundance[is.na(fish$Abundance)] <- 0
+fish$Abundance_m2[is.na(fish$Abundance_m2)] <- 0
+fish$Biomass_kgha[is.na(fish$Biomass_kgha)] <- 0
+### Re-add meta surveys
+fish <- left_join(fish, meta.all, by = "SurveyNo")
+### Fill in Diet for newly added species
+specieslist <- dplyr::select(specieslist, c("Species", "Diet"))
+fish <- left_join(fish, specieslist, by = "Species")
+
+## Add transect info
+transectinfo <- as.data.frame(read_excel("Raw data/Measurements timeline.xlsx", sheet = "Overview (yearly)"))
+colnames(transectinfo)[1] <- "Transect"
+transectinfo <- dplyr::select(transectinfo, c("Transect", "Type", "Site", "GPS", "Depth.MLLW", "Reef.dist_m", "AR.dist_m", "Date.created", "Area_m2"))
+fish$Transect <- tolower(fish$Transect)
+transectinfo$Transect <- tolower(transectinfo$Transect)
+
+fish <- left_join(fish, transectinfo, by = "Transect")
+
+# Cleanup
+fish$Type <- ifelse(fish$Transect == "na", "Reference", fish$Type)
+fish$Site <- ifelse(fish$Transect == "na", fish$Location, 
+             ifelse(is.na(fish$Site), fish$Location, fish$Site))
+fish$Type <- ifelse(is.na(fish$Type), "Other", fish$Type)
+colnames(fish)[which(names(fish) == "Type")] <- "Treatment"
+fish$Patch.type <- ifelse(grepl("cma-l-", fish$Transect), "AR (L)",
+                   ifelse(grepl("cma-xl-", fish$Transect), "AR (XL)",
+                   ifelse(grepl("cma-xs-", fish$Transect), "AR (XS)",
+                   ifelse(grepl("-bru-", fish$Transect), "BRU",
+                   ifelse(grepl("-cage-", fish$Transect), "CAGE",       
+                   ifelse(grepl("-cake-", fish$Transect), "CAKE",       
+                   ifelse(grepl("-comp-", fish$Transect), "COMP",
+                   ifelse(grepl("m-", fish$Transect), "MOSES (- coral)",       
+                   ifelse(grepl("m+", fish$Transect), "MOSES (+ coral)",       
+                   ifelse(grepl("m-c", fish$Transect), "MOSES (control)",  
+                   ifelse(grepl("m-p", fish$Transect), "MOSES (pins)",       
+                   ifelse(grepl("r-l-", fish$Transect), "Reference (L)",
+                   ifelse(grepl("r-xl-", fish$Transect), "Reference (XL)",
+                   ifelse(grepl("r-xs-", fish$Transect), "Reference (XS)", "na"))))))))))))))     
+fish$Date.created <- excel_numeric_to_date(as.numeric(fish$Date.created))
+fish$Year.created <- year(fish$Date.created)
+fish$Year <- year(fish$Date)
+
+## Re-order dataframe
+fish <- dplyr::select(fish, "SurveyNo", "Site", "Treatment", "Patch.type", "Transect", "Year.created", "Date.created", "GPS",
+                            "Depth.MLLW", "Reef.dist_m", "AR.dist_m", "Area_m2", "Observer", "Comments", "Year", "Date",
+                            "Species", "Diet", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha", "Coloured")
+
+## Set apart dataframe with sizeclasses (can't be saved as file is too large: >1M rows)
+fish_sizeclass <- fish
+
+## Remove NAs before aggregating
+fish <- fish %>%
+  mutate_if(is.character, ~replace_na(., "na")) 
+fish <- fish %>%
+  mutate_if(is.numeric, ~replace_na(., -1)) 
+fish <- dplyr::select(fish, -c("Date.created"))
+
+fish <- aggregate(
+  list(Abundance = fish$Abundance, Abundance_m2 = fish$Abundance_m2, Biomass_kgha = fish$Biomass_kgha, Coloured = fish$Coloured),
+       by = list(SurveyNo = fish$SurveyNo, Site = fish$Site, Treatment = fish$Treatment, Patch.type = fish$Patch.type, Transect = fish$Transect, Year.created = fish$Year.created, GPS = fish$GPS, Depth.MLLW = fish$Depth.MLLW, Reef.dist_m = fish$Reef.dist_m, AR.dist_m = fish$AR.dist_m, Area_m2 = fish$Area_m2, Observer = fish$Observer, Comments = fish$Comments, Year = fish$Year, Date = fish$Date, Species = fish$Species, Diet = fish$Diet),
+                  sum)
+
+## Set Coloured levels back to original scale
+fish$Coloured <- ifelse(fish$Coloured == 144, 12, # No colour in 2017 - 2022 dataset (12 * 12 size classes)
+                 ifelse(fish$Coloured == 120, 12, # No colour in 2023+ dataset (12 * 10 size classes)
+                 ifelse(fish$Coloured == 288, 12, # No colour 2017-2022 & species wrongly duplicated across datasets 
+                 ifelse(fish$Coloured == 240, 12,  # No colour 2023+ & species wrongly duplicated across datasets 
+                                              11)))) # All other options: at least one coloured cell
+## Write clean Excel                     
+write_xlsx(fish, "Fish_All years.xlsx")                      
+
+## Clean environment
+rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.2018, fishRAW.2019, fishRAW.2020, fishRAW.2021, meta.all,
+   meta.2018, meta.2019, meta.2020, meta.2021, meta.2017_2022, specieslist, transectinfo, colname, fish.2023_colname,
+   fish.2023_surveys.tot, Fish.2023_speciesList, surveys.tot,
+   fish.2023, Fish.2023_ColouredCells, fish.2023format, fishRaw.2023, meta.2023, 
+   fish.2024, Fish.2024_ColouredCells, fish.2024format, fishRaw.2024, meta.2024, obs_block, raw_obs, fish.2024_colname,
+   Fish.2024_speciesList, fish.2024_surveys.tot, input_file, wb)
+
+```
+
+# Load (merged) data
+```{r}
+
+#TODO: Load in ALL data, and adjust it to match with Paula's selection
+
+# Load data sets
+fish <- as.data.frame(read_excel("Fish_All years.xlsx"))
+#surveys <- as.data.frame(read_excel("Bleaching_Fish metadata.xlsx"))
+#specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2024-07.xlsx"))
+
+# Set data types
+fishtofactors <- c('SurveyNo', 'Site', 'Treatment', 'Patch.type', 'Transect', 'Year.created', 'Observer', 'Year', 'Species', 'Diet') 
+fish[fishtofactors] <- lapply(fish[fishtofactors], factor)
+#$SurveyNo <- as.numeric(fish$SurveyNo)
+#surveys$SurveyNo <- as.numeric(surveys$SurveyNo)
+
+#tofactors <- c('Transect', 'Observer', 'Year') 
+#surveys[tofactors] <- lapply(surveys[tofactors], factor)
+
+#listtofactors <- c('Species', 'Diet')
+#specieslist[listtofactors] <- lapply(specieslist[listtofactors], factor)
+
+# Get total list of surveys (also those without any observations)
+totsur <- as.data.frame(unique(fish$SurveyNo)) 
+names(totsur) <- "SurveyNo"
+
+# Select relevant surveys
+## Select surveys on relevant (reference) transects
+fish <- fish[grepl("\\(nt-r-|\\(f-r-", fish$Transect, ignore.case = TRUE), ]
+fish <- droplevels(fish)
+## Exclude test/practise surveys
+fish <- fish[!grepl("test|wrong|exclude", fish$Comments, ignore.case = TRUE), ]
+
+#TODO: See how to deal with two surveyors surveying on the same date (something Paula somehow seems to have filtered out to 1 single survey: See what decisions made there?) AND: Understand how come (it appears) we still ended up with roughly same amount of surveys, even though Paula left out so many duplicate surveys??
+
+```
+
+# Richness
+```{r richness}
+
+# ---- DATA PREP ----
+# RICHNESS
+
+div <- fish
+#div[, 3:14] <- lapply(div[, 3:14], function(x) as.numeric(as.character(x)))
+
+# Step 2: Remove the 'Coloured' column
+#div <- select(div, -c('Coloured'))
+
+# Step 3: Calculate SpeciesAbundance (sum across columns 3 to 14)
+#div$SpeciesAbundance <- rowSums(div[, 3:14], na.rm = TRUE)
+
+# Step 4: Remove rows with no abundance
+div <- div[div$SpeciesAbundance != 0,]
+
+#divx <- div[!grepl(".*sp$", div$Species),]
+
+## Make already a grouping, for Diversity analysis on Diet level
+divDiet <- spread(merge(div, specieslist, all.x=T), key = Diet, value = SpeciesAbundance) # Diet from long to wide
+#divDiet <- divDiet[,-c(1,3:16)] # Remove unnecessary columns
+#divDiet <- merge(divDiet, totsur, all.y=T) # Re-add surveys without observations
+#divDiet[is.na(divDiet)] <- 0
+divdiet <- select(div, c("SurveyNo", "", "", ""))
+divDiet <- aggregate(. ~ SurveyNo, data = div, FUN = sum) # Sum each Diet per Survey
+
+## Get fish surveys from long to wide
+div <- spread(div, key = Species, value = SpeciesAbundance) # Fish surveys data from long to wide
+div <- div[,-c(2:13)] #Remove unnecessary columns
+div[is.na(div)] <- 0 
+div <- aggregate(. ~ SurveyNo, data=div, FUN=sum) #Here we combine all species for each survey
+div <- merge(div, totsur, all.y=T) # Re-add surveys without observations
+div[is.na(div)] <- 0 
+
+## Total species encountered per Treatment
+metamini <- select(surveys, c("SurveyNo", "Year"))
+divtot <- left_join(div, metamini, by = "SurveyNo")
+divtot <- select(divtot, -c("SurveyNo"))
+divtot <- aggregate(. ~ Year, divtot, sum)
+
+
+## Calculate Richness
+divsum <- as.data.frame(cbind(div$SurveyNo, as.numeric(rowSums(div!=0) - 1)))
+names(divsum) <- c("SurveyNo", "S")
+divsum <- merge(surveys, divsum, all.x=T) # Merge with selected survey metadata
+divsum <- select(divsum, -c("Area", "Comments"))
+
+## Average surveys done simultaneously
+divsumsubmeans <- divsum 
+divsumsubmeans <- aggregate(S ~ Transect + Date + Year, divsumsubmeans, mean)
+#divsumsubmeans <- merge(divsumsubmeans, metadata, all.x=T, by = "Transect") # Add Patch metadata
+
+## Average over replicate transects within each Year 
+
+divsumsubtransmeans <- divsumsubmeans
+divsumsubtransmeans <- aggregate(S ~ Transect + Year, divsumsubtransmeans, mean)
+
+
+# SPECIES LISTS
+## Create data frame
+Specs <- left_join(surveys, div, by = "SurveyNo")
+
+## Cleanup
+Specs <- select(Specs, -c("SurveyNo", "Observer", "Date", "Area", "Comments"))
+Specs <- select(Specs, -c("Location"))
+
+Specs.sum <- aggregate(. ~ Year + Transect, Specs, sum)
+Specs.sum <- select(Specs.sum, -c("Transect"))
+
+
+lmerSmeancor<- lmer(S ~ Year + (1|Transect), data = divsumsubmeans)
+car::Anova(lmerSmeancor)
+summary(lmerSmeancor)
+
+##### Interpretation of results
+##Results from the linear mixed model indicate that species richness (S) did not change significantly across the sampled years. The model tested for differences relative to a baseline year, and while species richness appeared slightly lower in 2020 (p = 0.0738) and slightly higher in 2023 (p = 0.0799), these effects were only marginally significant and should be interpreted with caution. There was no meaningful variation among transects (the random effect variance was essentially zero), suggesting that most of the variation in species richness was within transects rather than between them. The residual standard deviation was relatively high (SD = 5.55), indicating notable unexplained variability. The model also showed a singular fit, meaning the random effects structure may be too complex or unnecessary for this dataset. Overall, species richness remained relatively stable over time with no strong or consistent trend.
+
+### Model validation
+mod <- lmerSmeancor # set model to be validated
+op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
+plot(resid(mod, type = "pearson") ~ fitted(mod)) # fitted vs residuals
+abline(0,0)
+hist(resid(mod, type = "pearson"), main = "") # histogram residuals
+qqnorm(resid(mod, type = "pearson")) # QQplot residuals
+plot(divsumsubmeans$Year, resid(mod, type = "pearson")) # residuals split over Date
+abline(0,0)
+plot(fitted(mod) ~ divsumsubmeans$S) # response data vs fitted
+par(op)
+
+### Post hoc
+emmScor<- emmeans(lmerSmeancor, specs = pairwise ~ Year, adjust = 'tukey', type = "response") 
+emmScorsum <- multcomp::cld(emmScor$emmeans, alpha = 0.05, Letters = letters, reversed = FALSE) # get CLD
+emmScorsum <- emmScorsum %>% dplyr::mutate(.group = str_squish(.group)) # remove white spaces
+
+# ---- PLOTS ----
+### Richness 
+Divplot <- ggplot(data = divsumsubmeans, aes(x = Year, colour = Year, y = S)) +
+    geom_jitter(width = 0.2, size = 2) +
+    scale_colour_manual(values = co) +
+    geom_point(data = emmScorsum, aes(y = emmean), size = 4, colour = 'black') +
+    geom_errorbar(data = emmScorsum, width = 0.1, colour = 'black', size = 0.8,
+                  aes(y = emmean, ymin = emmean - SE, ymax = emmean + SE)) +
+    geom_text(data = emmScorsum, 
+              aes(label = .group, y = emmean + 2.2 * SE), colour = 'black', size = 7) +
+    labs(y = "Fish species richness (S)", x = "Year") +
+    scale_y_continuous(breaks = c(10, 20, 30)) +
+    theme_bw() +
+    theme(axis.title.y = element_text(size = 14, face = "plain", vjust = 3),
+          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
+          axis.title.x = element_text(size = 14, face = "plain", vjust = 3),
+          axis.text.x = element_text(size = 14, face = "bold", vjust = 0.4),
+          legend.position = "none")
+
+print(Divplot)
+
+
+#ggsave("Fish_Richness_Years.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
+
+```
+
+# Biomass & Abundance
+## Biomass
+### Treatment comparisons
+```{r biomass treatment}
+
+# ---- DATA PREP ----
+fish[, 3:14] <- lapply(fish[, 3:14], function(x) as.numeric(as.character(x)))
+bio <- fish[rowSums(fish[,3:14]) != 0, ] # Remove species not observed in a survey
+bio <- bio[bio$Coloured == 12, ] # Remove non-instantaneous data (colored Excel cells)
+bio <- select(bio, -c("Coloured"))
+
+## Add info
+bio <- merge(bio, surveys, all.x=T, by='SurveyNo')
+bio <- merge(bio, specieslist, all.x=T, by='Species')
+
+## Get Size class from wide to long
+bio <- reshape2::melt(bio, id.vars = c('SurveyNo', 'Year','Transect', 'Species', 'Diet', 'a', 'b', 'Area'), 
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '75', '125', '175'),
+          variable.name = 'SizeClass', value.name = 'Abundance')
+
+## Cleanup
+bio <- bio[bio$Abundance != 0,] # Remove size classes not observed per species (to speed up R)
+bio$SizeClass <- as.numeric(paste(bio$SizeClass)) # Set a numeric Length
+
+## Calculate biomass using the length-weight formula W = a * L^b, multiply per abundance and standardize to kg/ha
+bio$Biomass_ha <- ((((bio$a * (bio$SizeClass ^ bio$b)) * bio$Abundance)/ bio$Area)/1000)* 10000
+
+## Select
+bio.cor <- select(bio, - c("Transect","a", "b")) # Keep area in corrected dataset to recalculate biomass
+bio <- select(bio.cor, - c("Area"))
+
+## Make already a grouping, for Ordination analysis on Diet level
+bioDiet <- spread(bio, key = Diet, value = Biomass_ha) # Make Diet section from long to wide
+bioDiet <- bioDiet[,-c(3:5)] #Remove unnecessary columns
+bioDiet[is.na(bioDiet)] <- 0
+bioDiet <- merge(bioDiet, totsur, all.y=T) # Re-add surveys without observations
+bioDiet[is.na(bioDiet)] <- 0
+bioDiet <- aggregate(. ~ SurveyNo, data = bioDiet, FUN = sum) # Sum each Diet per Survey
+
+```
+
+# Biomass treatment
+```{r biomass treatment}
+## Summarize per survey - Biomass
+biosum <- merge(surveys[ ,c(1:6)], bio, by = "SurveyNo", all.x=T)
+biosum <- biosum[,-c(6)]
+biosum <- aggregate(Biomass_ha ~ SurveyNo, biosum, sum) # Get the total biomass per survey
+biosum <- merge(biosum, totsur, all.y=T) # Re-add surveys without observations
+biosum[is.na(biosum)] <- 0
+biosum <- merge(surveys, biosum, by = "SurveyNo", all.x=T)
+
+## Summarize per survey - Abundance
+abusum <- merge(surveys[ ,c(1:6)], bio, by = "SurveyNo", all.x=T)
+abusum <- aggregate(Abundance ~ SurveyNo, abusum, sum) # Get the total biomass per survey
+abusum <- merge(abusum, totsur, all.y=T) # Re-add surveys without observations
+abusum[is.na(abusum)] <- 0
+abusum <- merge(surveys, abusum, by = "SurveyNo", all.x=T)
+
+## Aggregate the simultaneous surveys and means for transects per Year
+
+biosumsubmeans <- biosum
+biosumsubmeans <- aggregate(Biomass_ha ~ Transect + Date + Year, biosumsubmeans, mean)
+
+## Average per patch
+
+biosumsubtransmeans <- biosumsubmeans
+biosumsubtransmeans <- aggregate(Biomass_ha ~ Transect + Year, biosumsubtransmeans, mean)
+
+# ---- MODELLING ----
+# Log-transformed because of heterogeneity residuals
+biosumsubmeans$Biomass_ha[biosumsubmeans$Biomass_ha == 0] <- min(biosumsubmeans$Biomass_ha[biosumsubmeans$Biomass_ha>0])/2
+
+### Model
+lmerBiomeans <- lmer(log10(Biomass_ha) ~ Year + (1|Transect), data = biosumsubmeans)
+car::Anova(lmerBiomeans)
+summary(lmerBiomeans)
+
+#### Interpretation of results
+#The linear mixed model analyzing log-transformed biomass per hectare revealed some evidence of temporal variation across years. Biomass in 2023 was significantly lower than the baseline year (p = 0.0115), while 2020 also showed a marginally significant decline (p = 0.0500). Other years did not differ significantly from the baseline. The model included transect as a random effect, which accounted for a small amount of variance (SD = 0.095), indicating slight variation in biomass levels between transects. The residual variation remained moderate (SD = 0.411), suggesting most variation was within transects or not explained by year alone. Overall, these results suggest that biomass was relatively stable in most years, but showed notable declines in 2020 and especially 2023.
+
+### Model validation
+mod <- lmerBiomeans # set model to be validated
+op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
+plot(resid(mod, type = "pearson") ~ fitted(mod)) # fitted vs residuals
+abline(0,0)
+hist(resid(mod, type = "pearson"), main = "") # histogram residuals
+qqnorm(resid(mod, type = "pearson")) # QQplot residuals
+plot(biosumsubmeans$Year, resid(mod, type = "pearson")) # residuals split over Date
+abline(0,0)
+plot(fitted(mod) ~ log10(biosumsubmeans$Biomass_ha)) # response data vs fitted
+par(op)
+
+### Post hoc
+emmBiomeans <- emmeans(lmerBiomeans, list(pairwise ~ Year), adjust='tukey', type = "response") 
+emmBiosum <- multcomp::cld(emmBiomeans$emmeans, alpha = 0.05, Letters = letters, reversed = FALSE)
+emmBiosum <- emmBiosum %>% dplyr::mutate(.group = str_squish(.group)) # remove white spaces
+
+# ---- PLOTS ----
+
+Bioplot <- ggplot(data = biosumsubtransmeans, aes(x = Year, y = Biomass_ha, colour = Year)) +
+    geom_jitter(width = 0.2, size = 2) +
+    scale_colour_manual(values = co) +
+    scale_x_discrete(expand = c(0, 0.7)) +  # Use actual year values in the data
+    geom_point(data = emmBiosum, aes(y = response), colour = 'black', size = 4) +
+    geom_errorbar(data = emmBiosum, width = 0.1, colour = 'black', size = 0.8,
+                  aes(y = response, ymin = response - SE, ymax = response + SE)) +
+    geom_text(data = emmBiosum, aes(label = .group, y = response + 3.5 * SE), colour = 'black', size = 7) +
+    labs(y = expression(paste("Fish biomass (kg ", ha^-1, ")")), x = "Year") +
+    scale_y_continuous(trans = 'log10', breaks = c(10, 100, 1000)) +
+    coord_cartesian(ylim = c(4, 1001)) +
+    scale_color_manual(values = co) +
+    theme_bw() +
+    theme(axis.title.y = element_text(size = 14, face = "plain", vjust = 2.7),
+          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
+          axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),
+          axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5),
+          legend.position = "none")
+
+print(Bioplot)
+
+#ggsave("Fish_Biomass.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
+
+
+```
+
+### Composition comparisons
+<!--
+Composition comparisons done on Biomass level, because more informative than on Abundance level
+-->
+```{r biomass composition}
+
+# ---- DATA PREP ----
+## ==== Species ====
+### Create data frame
+bio.ord <- spread(bio, key = Species, value = Biomass_ha) # Wide to long
+bio.ord <- select(bio.ord, -c(2:5))
+bio.ord[is.na(bio.ord)] <- 0
+bio.ord <- aggregate(. ~ SurveyNo, data = bio.ord, FUN = sum, na.action = na.omit) # Sum each Species per Survey
+
+### Add info and re-add surveys without observations
+bio.ord <- left_join(surveys, bio.ord, by = "SurveyNo")
+bio.ord <- select(bio.ord, -c(3,5,6))
+
+### Data selection
+bio.ord[is.na(bio.ord)] <- 0 # Set all Species to 0 for surveys without observations
+
+## Create replicate
+bio.ord.years <- bio.ord 
+
+### average over replicate surveys
+bio.ord <- aggregate(.~Transect+Year, bio.ord, mean)
+bio.ord.years <- aggregate(.~Transect+Year, bio.ord.years, mean)
+
+## ==== Diet ====
+### Create data frame
+bioDiet <- bioDiet %>% select(-Year)
+bioBrayDiet <- merge(surveys[, c(1:5, 7)], bioDiet, all.x = TRUE)
+bioBrayDiet <- bioBrayDiet %>% select(-14)
+
+bioBrayDiet$Transect <- as.factor(bioBrayDiet$Transect)
+bioBrayDiet$Year <- as.factor(bioBrayDiet$Year)
+
+bioBrayDiet <- bioBrayDiet %>% select(-c(1:3, 5))
+
+
+### Average over replicate surveys
+subbcDiet.bio <- aggregate(.~Transect+Year, bioBrayDiet, mean)
+
+# ---- STATS ----
+
+## ==== Species ====
+#### Create a bc mean distance table 
+BCtable.Bio.Specs <- vegdist(bio.ord[,6:ncol(bio.ord)], "bray")
+BCtable.Bio.Specs.tab <- as.data.frame(meandist(BCtable.Bio.Specs, bio.ord$Year, cluster=average))
+
+#### Stats
+adonis.Bio.Specs <- adonis2(formula = BCtable.Bio.Specs ~ Year, data = bio.ord, permutations = 9999)
+pairadonis.Bio.Specs <- pairwise.adonis(BCtable.Bio.Specs, bio.ord$Year, p.adjust='bonferroni', perm = 37000)
+
+#### NMDS
+NMDS.Bio.Spec <- metaMDS(bio.ord[,6:ncol(bio.ord)], distance = "bray", k = 2, trymax=3000, autotransform = FALSE) 
+
+### #### Years #### Replicate
+BCtable.Bio.Specs.years <- vegdist(bio.ord.years[,6:ncol(bio.ord.years)], "bray")
+
+#### Stats
+adonis.Bio.Specs.years <- adonis2(formula = BCtable.Bio.Specs.years ~ Year,
+                                  data = bio.ord.years, permutations = 9999)
+pairadonis.Bio.Specs.years <- pairwise.adonis(BCtable.Bio.Specs.years, bio.ord.years$Year,
+                                              p.adjust='bonferroni', perm = 37000)
+
+#### NMDS
+NMDS.Bio.Spec.years <- metaMDS(bio.ord.years[,6:ncol(bio.ord.years)],
+                               distance = "bray", k = 2, trymax=3000, autotransform = FALSE) 
+
+## ==== Diet ==== #### 
+### Create a bc mean distance table 
+BCtable.Bio.Diet <- vegdist(subbcDiet.bio[,3:ncol(subbcDiet.bio)], "bray")
+BCtable.Bio.Diet.tab <- as.data.frame(meandist(BCtable.Bio.Diet, subbcDiet.bio$Year, cluster=average))
+
+### Stats
+adonis.Bio.Diet <- adonis2(formula = BCtable.Bio.Diet ~ Year, data = subbcDiet.bio, permutations = 9999)
+pairadonis.Bio.Diet <- pairwise.adonis(BCtable.Bio.Diet, subbcDiet.bio$Year, p.adjust = 'bonferroni', perm = 37000)
+
+### NMDS
+NMDS.Bio.Diet <- metaMDS(subbcDiet.bio[,3:ncol(subbcDiet.bio)], distance = "bray", k = 2, trymax=1000, autotransform = FALSE) 
+
+## ==== Years (Based on Abundance rather than Biomass) ====
+### Create a bc mean distance table 
+
+Specs.sum.min <- Specs
+BCtable.Abu.Years <- vegdist(Specs.sum.min[,3:ncol(Specs.sum.min)], "bray")
+BCtable.Abu.Years.tab <- as.data.frame(meandist(BCtable.Abu.Years, Specs.sum.min$Year, cluster=average))
+
+### Stats
+adonis.Abu.Years <- adonis2(formula = BCtable.Abu.Years ~ Year, data = Specs.sum.min, permutations = 9999)
+pairadonis.Abu.Years <- pairwise.adonis(BCtable.Abu.Years, Specs.sum.min$Year, p.adjust = 'bonferroni', perm = 37000)
+
+### NMDS
+NMDS.Abu.Years <- metaMDS(Specs.sum.min[,3:ncol(Specs.sum.min)], distance = "bray", k = 2, trymax=1000, autotransform = FALSE)
+
+
+# ---- PLOTS ----
+
+## ==== Species ==== ### 
+##### On Year level
+NMDS.Bio.Spec.Year <- as.data.frame(scores(NMDS.Bio.Spec, display="site"))
+NMDS.Bio.Spec.Year$Treatment <- subbcDiet.bio$Year
+NMDS.Bio.Spec.Year$Interaction <- subbcDiet.bio$Interaction
+
+Ordi.Sp.Patch <- ggplot(data = NMDS.Bio.Spec.Year)+
+    stat_ellipse(geom = "polygon", alpha = 0.1, aes(x = NMDS1, y = NMDS2, fill = Treatment),
+                level = 0.5, size = 12)+
+    scale_fill_manual(values=co)+
+    geom_point(aes(x = NMDS1,y = NMDS2, colour = Treatment), size= 2)+
+    scale_color_manual(values=co)+
+    scale_y_continuous(limits = c(-2, 2), breaks = c(-2, 0, 2))+
+    theme_bw()+
+    theme(legend.position = "none",
+          legend.text = element_text(size = 12),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.title.y = element_text(size = 14, face = "plain", vjust = 3),
+          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
+          axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          plot.margin = margin(0, 0, 0.2, 0.5, "cm"),
+          axis.ticks.length.x = unit(0, "cm"))
+#ggsave("Fish_Ordination species_Patch_Biomass.tiff", width = 18, height = 14, units = "cm", dpi=1200, compression = "lzw")
+
+#### On Species level
+##### Adjust font size based on % of surveys in which a species is seen
+specsizes.bio <- bio.ord[,6:ncol(bio.ord)]
+specsizes.bio <- colSums(specsizes.bio)
+specsizes.bio.min <- min(specsizes.bio)
+specsizes.bio.max <- max(specsizes.bio)
+cex.bio.min <- 0.05
+cex.bio.max <- 2
+specsizes.bio <- ((specsizes.bio - specsizes.bio.min)/(specsizes.bio.max-specsizes.bio.min)) * (cex.bio.max - cex.bio.min) + cex.bio.min
+
+##### Plot on Species level
+##### For composite
+cox <- c(co, "#0673B0", "#0673B0", "#0673B0") 
+
+pdf(NULL)
+dev.control(displaylist="enable")
+par(bg = 'white',   las=1, tck=-0.007, cex.axis=1.1, cex.lab = 1.1, font.axis = 2, mar=c(6.5, 4.2, 0.1, 0.2), 
+    col.axis = "#464646")
+ordiplot(NMDS.Bio.Spec, type="none",  cex = 0.3, ylim = c(-1.1, 1.1), xlim = c(-0.1, 0.9))
+ordiellipse(NMDS.Bio.Spec, groups = bio.ord$Year, kind = "se", conf = 0.99, draw  ="polygon", 
+            col = cox, alpha = 50, label = F, lty = 'blank', border = "white")
+ordipointlabel(NMDS.Bio.Spec, display = "species", scaling = "symmetric", add = TRUE,
+               cex = specsizes.bio, font = 3)
+Ordi.Sp.Sp <- recordPlot()
+invisible(dev.off())
+#Ordi.Sp.Sp <- plot_grid(Ordi.Sp.Sp) + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+#png("Ordi_Sp_Sp.png", width = 1200, height = 1000, res = 150)
+replayPlot(Ordi.Sp.Sp)
+dev.off()
+
+tiff("Ordi_Sp_Sp.tiff", width = 8, height = 6.5, units = "in", res = 300, compression = "lzw")
+replayPlot(Ordi.Sp.Sp)
+dev.off()
+
+#### Years ####
+##### Adjust font size based on % of surveys in which a species is seen
+specsizes.bio.years <- bio.ord.years[,6:ncol(bio.ord.years)]
+specsizes.bio.years <- colSums(specsizes.bio.years)
+specsizes.bio.years.min <- min(specsizes.bio.years)
+specsizes.bio.years.max <- max(specsizes.bio.years)
+cex.bio.years.min <- 0.03
+cex.bio.years.max <- 2
+specsizes.bio.years <- ((specsizes.bio.years - specsizes.bio.years.min)/(specsizes.bio.years.max-specsizes.bio.years.min)) * (cex.bio.years.max - cex.bio.years.min) + cex.bio.years.min
+
+##### Plot on Species*Year level # everything looks too crowded. Solution: get the first 3 letters of every species
+tiff("Fish_Ordination_species_Species_Years_Biomass.tiff",
+     width = 18, height = 14, units = "cm", res = 300, compression = "lzw")
+
+Ordi.Sp.Sp.years <- ordiplot(NMDS.Bio.Spec.years, type="none",
+                             cex = 0.3, ylim = c(-0.3, 0.2), xlim = c(-1.8, 2.1))
+ordiellipse(NMDS.Bio.Spec.years, groups = bio.ord.years$Year, kind = "se", conf = 0.99, draw  ="polygon", 
+            col = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733"), alpha = 50, label = T, lty = 'blank', border = "white")
+ordipointlabel(NMDS.Bio.Spec.years, display = "species", scaling = 9, add = TRUE, cex = specsizes.bio.years)
+dev.off()
+
+#### Based on Abundance
+##### Adjust font size based on % of surveys in which a species is seen
+specsizes.abu.years <- Specs.sum.min[,3:ncol(Specs.sum.min)]
+specsizes.abu.years <- colSums(specsizes.abu.years)
+Specs.sum.min.min <- min(specsizes.abu.years)
+Specs.sum.min.max <- max(specsizes.abu.years)
+cex.abu.years.min <- 0.03
+cex.abu.years.max <- 2
+specsizes.abu.years <- ((specsizes.abu.years - cex.abu.years.min)/(Specs.sum.min.max-Specs.sum.min.min)) * (cex.abu.years.max - cex.abu.years.min) + cex.abu.years.min
+
+##### Plot on Species*Study level
+tiff("Fish_Ordination species_Species_Years_Abundance.tiff", width = 18, height = 14, units = "cm", res = 1500, compression = "lzw")
+Ordi.Sp.Sp.years.abu <- ordiplot(NMDS.Abu.Years, type="none",
+                             cex = 0.3, ylim = c(-0.3, 0.2), xlim = c(-1.8, 2.1))
+ordiellipse(NMDS.Abu.Years, groups = Specs.sum.min$Year, kind = "se", conf = 0.99, draw  ="polygon", 
+            col = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733"), alpha = 50, label = T, lty = 'blank', border = "white")
+ordipointlabel(NMDS.Abu.Years, display = "species", scaling = 9, add = TRUE, cex = specsizes.abu.years)
+dev.off()
+
+## ==== Diet ====
+### On Patch level
+NMDS.Bio.Diet.Patch <- as.data.frame(scores(NMDS.Bio.Diet, display="site"))
+NMDS.Bio.Diet.Patch$Treatment <- ifelse(subbcDiet.bio$Year == 2018, "2018",
+                                 ifelse(subbcDiet.bio$Year == 2019, "2019",       
+                                 ifelse(subbcDiet.bio$Year == 2020, "2020",       
+                                 ifelse(subbcDiet.bio$Year == 2021, "2021",       
+                                 ifelse(subbcDiet.bio$Year == 2022, "2022",      
+                                 ifelse(subbcDiet.bio$Year == 2023, "2023",
+                                 ifelse(subbcDiet.bio$Year == 2024, "2024", "Other")))))))
+
+
+Ordi.Diet.Patch <- ggplot(data = NMDS.Bio.Diet.Patch)+
+    stat_ellipse(geom = "polygon", alpha = 0.1, aes(x = NMDS1, y = NMDS2, fill = Treatment),
+                level = 0.6, size = 10)+ # Not an actual confidence ellipse, but matches that of ordiplot
+    scale_fill_manual(values=co)+
+    geom_point(aes(x = NMDS1,y = NMDS2, colour = Treatment), size= 2)+
+    scale_color_manual(values=co)+
+    scale_y_continuous(breaks = c(-1, 0, 1), limits = c(-1, 1))+
+    scale_x_continuous(limits = c(-2, 2))+
+    theme_bw()+
+    theme(legend.text = element_text(size = 12),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.title.y = element_text(size = 14, face = "plain", vjust = 3),
+          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
+          axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),
+          axis.text.x = element_text(size = 14, face = "bold", vjust = 0.5),
+          legend.position="bottom",
+          legend.title = element_blank(),
+          plot.margin = margin(0, 0, 0.1, 0.5, "cm"))+
+     guides(fill = guide_legend(nrow = 1))
+leg <- get_legend(Ordi.Diet.Patch)
+ggsave("Fish_Ordination diet_Patch_Biomass.tiff", width = 18, height = 10, units = "cm", dpi=1200, compression = "lzw")
+
+#### On Species level
+##### Adjust font size based on % of surveys in which a species is seen
+specsizes.bio.diet <- subbcDiet.bio[,3:ncol(subbcDiet.bio)]
+specsizes.bio.diet <- colSums(specsizes.bio.diet)
+specsizes.bio.diet.min <- min(specsizes.bio.diet)
+specsizes.bio.diet.max <- max(specsizes.bio.diet)
+cex.bio.diet.min <- 1
+cex.bio.diet.max <- 2
+specsizes.bio.diet <- ((specsizes.bio.diet - specsizes.bio.diet.min)/(specsizes.bio.diet.max-specsizes.bio.diet.min)) * (cex.bio.diet.max - cex.bio.diet.min) + cex.bio.diet.min
+
+##### Plot on Species level
+##### For composite
+cox.diet <- c(co, "#0673B0", "#0673B0", "#0673B0") 
+pdf(NULL)
+dev.control(displaylist="enable")
+par(bg = 'white',   las=1, tck=-0.007, cex.axis=1.1, cex.lab = 1.1, font.axis = 2, mar=c(4.5, 4.2, 0.1, 0.2), 
+    col.axis = "#464646")
+ordiplot(NMDS.Bio.Diet, type="none",  cex = 0.3, ylim = c(-0.5, 0.5), xlim = c(-1.9, 2.2))
+ordiellipse(NMDS.Bio.Diet, groups = subbcDiet.bio$Year, kind = "se", conf = 0.99, draw  ="polygon", 
+            col = cox.diet, alpha = 50, label = F, lty = 'blank', border = "white")
+ordipointlabel(NMDS.Bio.Diet, display = "species", scaling = "symmetric", add = TRUE,
+               cex = specsizes.bio.diet, font = 3)
+Ordi.Diet.Sp <- recordPlot()
+invisible(dev.off())
+Ordi.Diet.Sp <- plot_grid(Ordi.Diet.Sp) + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
+ggsave("Fish_Ordination_Diet by group.tiff", width = 18, height = 12, units = "cm", dpi=1200, compression = "lzw", Ordi.Diet.Sp)
+
+## ==== Composite ====
+ORDI <- plot_grid(Ordi.Sp.Sp, Ordi.Diet.Patch,  nrow = 3, align = "v", rel_heights = c(1,1,1.3),
+                  labels = c("A: Species", "B: Diet"),
+                  hjust = c(-0.8, -1, -1.25), vjust = 1.6)
+ggsave("Fish_Ordination_Compilation.tiff", width = 18, height = 24, units = "cm", dpi=1200, compression = "lzw", ORDI)
+
+# TODO: remove large white space in between?!?
+ORDI2 <- plot_grid(Ordi.Sp.Sp, Ordi.Diet.Sp,  leg,  nrow = 3,  rel_heights = c(1.2,0.8,0.1),
+                  labels = c("A: Species", "B: Diet", ""), align = "hv", greedy = F,
+                  hjust = c(-1, -1.6, 0), vjust = c(2, 2, 0))
+ggsave("Fish_Ordination_Compilation2.tiff", width = 18, height = 24, units = "cm", dpi=1200, compression = "lzw", ORDI2)
+
+
+
+##### High res Species plot
+#tiff("Fish_Ordination species_Species_Biomass_Highres.tiff", width = 18, height = 14, units = "cm", res = 3500, compression = "lzw")
+#Ordi.Sp.Sp
+#dev.off()
+
+```
+
+### BC tables
+```{r table}
+# ---- TABLE WORD CODE ----
+# create new word document
+new.word.doc=function(){
+  my.doc=read_docx()
+  return(my.doc)
+}
+
+# add an empty line
+add.empty.line=function(doc){
+  body_add_par(doc, " ")
+  return("empty line added")
+}
+
+# add a data frame as a table
+add.table=function(doc, tbl, col.keys=NULL, col.digits=NULL){
+  # create basic flextable
+  f.table=qflextable(tbl)
+  
+  # set table borders
+  f.table=border_inner_h(f.table, part="header", border=fp_border(color="black", width = 1))
+  #f.table=border_inner_v(f.table, part="all", border=fp_border(color="black", width = 1))
+  
+  # set fonts
+  f.table=flextable::font(f.table,  fontname = "Times", part = "all")
+  # also set the table's header font as bold
+  f.table=bold(f.table, part = "header")
+  
+  # add the table to the document
+  flextable::body_add_flextable(doc, 
+                                value = f.table, 
+                                align = "left" )
+  return("table added")
+}
+
+# SPECIES
+doc=new.word.doc()
+add.empty.line(doc)
+add.table(doc, BCtable.Bio.Specs.tab)
+
+# generate the Word document using the print function
+base::print(doc, target="Fish_BC Table Species x Treatment.docx")
+
+# DIET
+doc=new.word.doc()
+add.empty.line(doc)
+add.table(doc, BCtable.Bio.Diet.tab)
+
+# generate the Word document using the print function
+base::print(doc, target="Fish_BC Table Diet x Treatment.docx")
+
+```
+
+## Abundance
+### Treatment comparisons
+```{r abundance treatment}
+
+# ---- MODELLING ----
+
+## ==== Model ====
+### Prep data
+abusumsubmeans <- abusum
+abusumsubmeans$Abundance_m2 <- abusumsubmeans$Abundance / abusumsubmeans$Area 
+abusumsubmeans <- aggregate(Abundance_m2 ~ Transect + Date + Year, abusumsubmeans, mean) # Mean simul surveys
+abusumsubtransmeans <- aggregate(Abundance_m2 ~ Transect + Year, abusumsubmeans, mean) # Mean per Patch
+
+### Modelling
+#### Log-transformed because of heterogeneity residuals
+abusumsubmeans$Abundance_m2[abusumsubmeans$Abundance_m2 == 0] <- min(abusumsubmeans$Abundance_m2[abusumsubmeans$Abundance_m2>0])/2
+
+### Model
+lmerAbumeans <- lmer(log10(Abundance_m2) ~ Year + (1|Transect), data = abusumsubmeans)
+car::Anova(lmerAbumeans)
+
+### Validation
+mod <- lmerAbumeans # set model to be validated
+op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
+plot(resid(mod, type = "pearson") ~ fitted(mod)) # fitted vs residuals
+abline(0,0)
+hist(resid(mod, type = "pearson"), main = "") # histogram residuals
+qqnorm(resid(mod, type = "pearson")) # QQplot residuals
+plot(abusumsubmeans$Year, resid(mod, type = "pearson")) # residuals split over Date
+abline(0,0)
+plot(fitted(mod) ~ log10(abusumsubmeans$Abundance_m2)) # response data vs fitted
+par(op)
+
+### Post hoc
+emmAbu <- emmeans(lmerAbumeans, list(pairwise ~ Year), adjust='tukey', type = "response")
+emmAbusum <- multcomp::cld(emmAbu$emmeans, alpha = 0.05, Letters = letters, reversed = FALSE) # get CLD
+emmAbusum <- emmAbusum %>% dplyr::mutate(.group = str_squish(.group)) # remove white spaces
+
+# ---- PLOTS ----
+
+## ==== not adjusted ====
+### Abundance- not adjusted
+Abuplot <- ggplot(data = abusumsubtransmeans, aes(x = Year, colour = Year, y = Abundance_m2)) + 
+    geom_jitter(width = 0.2, size = 2) +
+    geom_point(data = emmAbusum, aes(y = response), colour = 'black', size = 4) +
+    geom_errorbar(data = emmAbusum, width = 0.1, colour = 'black', size = 0.8,
+                  aes(y = response, ymin = response - SE, ymax = response + SE)) +
+    geom_text(data = emmAbusum, 
+              aes(label = .group, y = response + 3.5 * SE), colour = 'black', size = 7) +
+    labs(y = expression(paste("Fish abundance (", m^-2, ")")), x = "Year") +  # Set x-axis title to "Year"
+    scale_y_continuous(trans = 'log10', breaks = c(0.1, 1, 10)) +
+    coord_cartesian(ylim = c(0.05, 11)) +
+    scale_color_manual(values = co) +
+    theme_bw() +
+    theme(axis.title.y = element_text(size = 14, face = "plain", vjust = 2.7),
+          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
+          axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),  # Restore x-axis title formatting
+          axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5),     # Restore x-axis labels
+          legend.position = "none")
+
+
+print(Abuplot)
+
+#ggsave("Fish_Abundance_Years.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
+
+
+```
+
+# Figure compilation
+```{r compilation}
+
+# S, Abu and Bio
+RAB <- plot_grid(Divplot, Bioplot,Abuplot, nrow = 3, align = "v", rel_heights = c(1,1,1.2),
+                 labels = c("A", "B", "C"), label_size = 18)
+ggsave("Fish_Richness and Abundance and Biomass.tiff", width = 18, height = 24, units = "cm", dpi=1200, compression = "lzw", RAB)
+
+
+```
+
+# Export for correlations
+```{r export}
+
+COR <- select(divsumsubtransmeans, c("Transect", "Year", "S"))
+COR$Abundance <- abusumsubtransmeans$Abundance_m2
+COR$Biomass <- biosumsubtransmeans$Biomass_ha
+
+write_xlsx(COR, "Structural complexity_Fish surveys_2022-08_Averages per year.xlsx")
+
+```
+
+
+
