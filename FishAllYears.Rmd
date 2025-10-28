@@ -6,13 +6,8 @@ date: "17/09/2025"
 output: html_document
 ---
 
-#imaginary update test for github
-
-#if on Asus laptop (Jorn)
-#setwd("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/R/bleachingFish")
-
 #if on MSI laptop (Jorn)
-setwd("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/R/bleachingFish")
+setwd("C:/Users/Jorn de Gelder/Documents/Thesis R")
 
 # Setup
 ```{r setup}
@@ -38,6 +33,7 @@ library(car) # glm model validation
 library(viridis) # Convert data from wide to long
 library(pairwiseAdonis)
 library(writexl) # Export Excel
+library(janitor) #Excel functions
 
 # Function to facilitate averaging data frame
 data_summary <- function(data, varname, groupnames){
@@ -156,7 +152,9 @@ fish.2017_2022 <- merge(fish.2017_2022, meta.2017_2022, all.x=T, by='SurveyNo')
 
 # ==== Species information ====
 ## Load and clean
-specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2024-07.xlsx", sheet = "SpeciesList"))
+stop()
+#specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2024-07.xlsx", sheet = "SpeciesList"))
+specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2025-10.xlsx", sheet = "SpeciesList"))
 specieslist$Species <- sub("\\.", "", specieslist$Species) # Remove points from species names
 specieslist <- select(specieslist, c("Species", "Diet", "a", "b"))
 
@@ -466,7 +464,13 @@ fish$Patch.type <- ifelse(grepl("cma-l-", fish$Transect), "AR (L)",
                    ifelse(grepl("m-p", fish$Transect), "MOSES (pins)",       
                    ifelse(grepl("r-l-", fish$Transect), "Reference (L)",
                    ifelse(grepl("r-xl-", fish$Transect), "Reference (XL)",
-                   ifelse(grepl("r-xs-", fish$Transect), "Reference (XS)", "na"))))))))))))))     
+                   ifelse(grepl("r-xs-", fish$Transect), "Reference (XS)",
+                   ifelse(grepl("(?<!\\()f-r-", fish$Transect, perl=TRUE), "Control",
+                   ifelse(grepl("(?<!\\()nt-r-", fish$Transect, perl=TRUE), "Control",
+                   ifelse(grepl("\\(f-r-",fish$Transect),"Reference",
+                   ifelse(grepl("\\(nt-r-",fish$Transect),"Reference",
+                                "na"))))))))))))))))))    
+
 fish$Date.created <- excel_numeric_to_date(as.numeric(fish$Date.created))
 fish$Year.created <- year(fish$Date.created)
 fish$Year <- year(fish$Date)
@@ -506,44 +510,40 @@ rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.201
    fish.2023_surveys.tot, Fish.2023_speciesList, surveys.tot,
    fish.2023, Fish.2023_ColouredCells, fish.2023format, fishRaw.2023, meta.2023, 
    fish.2024, Fish.2024_ColouredCells, fish.2024format, fishRaw.2024, meta.2024, obs_block, raw_obs, fish.2024_colname,
-   Fish.2024_speciesList, fish.2024_surveys.tot, input_file, wb)
+   Fish.2024_speciesList, fish.2024_surveys.tot, input_file, wb, fish_sizeclass, co, data_summary)
 
 ```
 
 # Load (merged) data
 ```{r}
-
-#TODO: Load in ALL data, and adjust it to match with Paula's selection
-
 # Load data sets
 fish <- as.data.frame(read_excel("Fish_All years.xlsx"))
-#surveys <- as.data.frame(read_excel("Bleaching_Fish metadata.xlsx"))
+
+#remove irrelevant columns
+fish <- fish %>%
+  select(-GPS, -Reef.dist_m, -AR.dist_m, -Year.created)
+
 #specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2024-07.xlsx"))
 
 # Set data types
-fishtofactors <- c('SurveyNo', 'Site', 'Treatment', 'Patch.type', 'Transect', 'Year.created', 'Observer', 'Year', 'Species', 'Diet') 
+fishtofactors <- c('SurveyNo', 'Site', 'Treatment', 'Patch.type', 'Transect', 'Observer', 'Year', 'Species', 'Diet') 
 fish[fishtofactors] <- lapply(fish[fishtofactors], factor)
-#$SurveyNo <- as.numeric(fish$SurveyNo)
-#surveys$SurveyNo <- as.numeric(surveys$SurveyNo)
-
-#tofactors <- c('Transect', 'Observer', 'Year') 
-#surveys[tofactors] <- lapply(surveys[tofactors], factor)
-
-#listtofactors <- c('Species', 'Diet')
-#specieslist[listtofactors] <- lapply(specieslist[listtofactors], factor)
-
-# Get total list of surveys (also those without any observations)
-totsur <- as.data.frame(unique(fish$SurveyNo)) 
-names(totsur) <- "SurveyNo"
 
 # Select relevant surveys
-## Select surveys on relevant (reference) transects
-fish <- fish[grepl("\\(nt-r-|\\(f-r-", fish$Transect, ignore.case = TRUE), ]
+fish <- fish[fish$Patch.type %in% c("CAGE", "CAKE","BRU","COMP","Control","Reference"), ]
+
+# Remove unused factors
 fish <- droplevels(fish)
+
 ## Exclude test/practise surveys
 fish <- fish[!grepl("test|wrong|exclude", fish$Comments, ignore.case = TRUE), ]
 
-#TODO: See how to deal with two surveyors surveying on the same date (something Paula somehow seems to have filtered out to 1 single survey: See what decisions made there?) AND: Understand how come (it appears) we still ended up with roughly same amount of surveys, even though Paula left out so many duplicate surveys??
+# Get total list of relevant surveys
+totsur <- as.data.frame(unique(fish$SurveyNo))
+names(totsur) <- "SurveyNo"
+totsur <- totsur %>% arrange(SurveyNo)
+
+# Before adding new surveys from 2025-2026 file, there are 454 surveys for the 6 reefs of the study (BRU, COMP, CAKE, CAGE, Control, Reference)
 
 ```
 
