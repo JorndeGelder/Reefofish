@@ -120,7 +120,7 @@ fish.2017_2022$Species <- ifelse(fish.2017_2022$Species == "Carangoides ferdau",
                  ifelse(fish.2017_2022$Species == "Carangoides fulvoguttatus", "Turrum fulvoguttatum",       
                  ifelse(fish.2017_2022$Species == "Carangoides orthogrammus", "Ferdauia orthogrammus",       
                  ifelse(fish.2017_2022$Species == "Cetoscarus bicolor", "Cetoscarus ocellatus",       
-                 ifelse(fish.2017_2022$Species == "Chromis dimidiata", "Pycnochromis dimidiatus",       
+                 ifelse(fish.2017_2022$Species == "Chromis dimidiata", "Pycnochromis fieldi",       
                  ifelse(fish.2017_2022$Species == "Chromis lepidolepis", "Azurina lepidolepis",       
                  ifelse(fish.2017_2022$Species == "Chromis nigrura", "Pycnochromis nigrurus",       
                  ifelse(fish.2017_2022$Species == "Chromis xutha", "Pycnochromis agilis",       
@@ -152,11 +152,9 @@ fish.2017_2022 <- merge(fish.2017_2022, meta.2017_2022, all.x=T, by='SurveyNo')
 
 # ==== Species information ====
 ## Load and clean
-stop()
-#specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2024-07.xlsx", sheet = "SpeciesList"))
 specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2025-10.xlsx", sheet = "SpeciesList"))
 specieslist$Species <- sub("\\.", "", specieslist$Species) # Remove points from species names
-specieslist <- select(specieslist, c("Species", "Diet", "a", "b"))
+specieslist <- select(specieslist, c("Species", "Diet", "DietH", "a", "b"))
 
 ## Add species data to main dataframe
 fish.2017_2022 <- merge(fish.2017_2022, specieslist, all.x=T, by='Species')
@@ -179,9 +177,6 @@ fish.2017_2022$Abundance_m2 <- fish.2017_2022$Abundance/fish.2017_2022$Area
 fish.2017_2022 <- select(fish.2017_2022, - c("a", "b", "Area"))
 
 # ---- DATA 2023-2025 ----
-# NB: This data is slightly different: size classes > 60cm are now specified and colored cells not yet identified in Excel
-#!!! SET EMPTY FISH ABUNDANCE CELLS TO ZERO (AS NUMBERS!) IN EXCEL BEFORE LOADING!
-
 # ---2023-2024---
 # Get raw data and formats
 fishRaw.2023 <- xlsx_cells("Raw data/Fish surveys_DATABASE_2023-2024_0.xlsx") # Includes all sheets
@@ -219,21 +214,24 @@ fish.2023 <- setDT(fish.2023)
 fish.2023 <- melt(fish.2023, 
             id.vars = 'Species', variable.name = 'SurveyNo', 
             measure.vars = patterns('^c1_', "Coloured_c1_", '^c2_', "Coloured_c2_", '^c3_', "Coloured_c3_", '^c4_', "Coloured_c4_", '^c5_', "Coloured_c5_", '^c6_', "Coloured_c6_", '^c7_', "Coloured_c7_", '^c8_', "Coloured_c8_", '^c9_', "Coloured_c9_", '^c10_', "Coloured_c10_", '^c11num_', "Coloured_c11num_", '^c11size_', "Coloured_c11size_"),
-            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '75', 'Coloured_75',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
+            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
 
 # Check & summarize if any of the size classes had a coloured cell
-fish.2023$Coloured <- ifelse(fish.2023$Coloured_1.25 + fish.2023$Coloured_3.75 + fish.2023$Coloured_6.25 + fish.2023$Coloured_8.75 + fish.2023$Coloured_12.5 + fish.2023$Coloured_17.5 + fish.2023$Coloured_25 + fish.2023$Coloured_35 + fish.2023$Coloured_45 + fish.2023$Coloured_75 + fish.2023$Coloured_Abundance_11 + fish.2023$Coloured_SizeClass_11 == 144, 12, 11)
-fish.2023 <- dplyr::select(fish.2023, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_75", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
+fish.2023$Coloured <- ifelse(fish.2023$Coloured_1.25 + fish.2023$Coloured_3.75 + fish.2023$Coloured_6.25 + fish.2023$Coloured_8.75 + fish.2023$Coloured_12.5 + fish.2023$Coloured_17.5 + fish.2023$Coloured_25 + fish.2023$Coloured_35 + fish.2023$Coloured_45 + fish.2023$Coloured_55 + fish.2023$Coloured_Abundance_11 + fish.2023$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2023 <- dplyr::select(fish.2023, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
 
 # Get Size class from wide to long
 fish.2023 <- reshape2::melt(fish.2023, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Abundance_11', 'SizeClass_11'), 
-          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '75'),
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55'),
           variable.name = 'SizeClass', value.name = 'Abundance')
 
 # ==== Add meta data ====
 ## Re-add species names in data frame
 fish.2023$Species <- Fish.2023_speciesList # Added based on original order (!)
 fish.2023$Species <- sub("\\.", "", fish.2023$Species) # Remove points from species names
+
+### Update taxonomy for re-named or previously misidentified species
+fish.2023$Species <-   ifelse(fish.2023$Species == "Pycnochromis dimidiatus", "Pycnochromis fieldi",fish.2023$Species)
 
 ## Species metadata
 fish.2023 <- merge(fish.2023, specieslist, all.x=T, by='Species') # Combine data and specieslist data frames
@@ -249,8 +247,8 @@ fish.2023 <- merge(fish.2023, meta.2023, all.x=T, by='SurveyNo')
 # ==== Calculate biomass ====
 ## For small size classes:
 fish.2023$Biomass_ha <- ((((fish.2023$a * (fish.2023$SizeClass ^ fish.2023$b)) * fish.2023$Abundance)/ fish.2023$Area)/1000)* 10000
-## For large size class (>11):
-fish.2023$Abundance_11 <- ifelse(fish.2023$SizeClass == 75, fish.2023$Abundance_11, 0) # Remove duplicates
+## For large size class (11):
+fish.2023$Abundance_11 <- ifelse(fish.2023$SizeClass == 55, fish.2023$Abundance_11, 0) # Remove duplicates
 fish.2023$Biomass_ha_11 <- ((((fish.2023$a * (fish.2023$SizeClass_11 ^ fish.2023$b)) * fish.2023$Abundance_11)/ fish.2023$Area)/1000)* 10000
 ## Add size classes together
 fish.2023$Biomass_kgha <- fish.2023$Biomass_ha + fish.2023$Biomass_ha_11
@@ -264,11 +262,10 @@ fish.2023 <- select(fish.2023, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_h
 fish.2023 <- fish.2023 %>% drop_na(Biomass_kgha) # Drop empty rows for surveys not yet done
 
 # ---2024-2025---
-
 # Change empty cells into zeros (needed to correctly read in the data in consecutive steps)
 ## Read observation block only (starting from row 3, column 2)
 input_file <- "Raw data/Fish surveys_DATABASE_2024-2025 (2025-05).xlsx"   # your original, styled file
-raw_obs <- read_excel(input_file, sheet = "INPUT Sheet", col_names = FALSE) # Takes ~15 mins
+raw_obs <- read_excel(input_file, sheet = "INPUT Sheet", col_names = FALSE) # Takes ~2 mins
 obs_block <- raw_obs[-c(1, 2), -1, drop = FALSE]  # remove first two rows and first column
 obs_block <- as.data.frame(obs_block, stringsAsFactors = FALSE)
 
@@ -330,21 +327,24 @@ fish.2024 <- setDT(fish.2024)
 fish.2024 <- melt(fish.2024, 
             id.vars = 'Species', variable.name = 'SurveyNo', 
             measure.vars = patterns('^c1_', "Coloured_c1_", '^c2_', "Coloured_c2_", '^c3_', "Coloured_c3_", '^c4_', "Coloured_c4_", '^c5_', "Coloured_c5_", '^c6_', "Coloured_c6_", '^c7_', "Coloured_c7_", '^c8_', "Coloured_c8_", '^c9_', "Coloured_c9_", '^c10_', "Coloured_c10_", '^c11num_', "Coloured_c11num_", '^c11size_', "Coloured_c11size_"),
-            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '75', 'Coloured_75',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
+            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
 
 # Check & summarize if any of the size classes had a coloured cell
 fish.2024$Coloured <- ifelse(fish.2024$Coloured_1.25 + fish.2024$Coloured_3.75 + fish.2024$Coloured_6.25 + fish.2024$Coloured_8.75 + fish.2024$Coloured_12.5 + fish.2024$Coloured_17.5 + fish.2024$Coloured_25 + fish.2024$Coloured_35 + fish.2024$Coloured_45 + fish.2024$Coloured_75 + fish.2024$Coloured_Abundance_11 + fish.2024$Coloured_SizeClass_11 == 144, 12, 11)
-fish.2024 <- dplyr::select(fish.2024, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_75", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
+fish.2024 <- dplyr::select(fish.2024, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
 
 # Get Size class from wide to long
 fish.2024 <- reshape2::melt(fish.2024, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Abundance_11', 'SizeClass_11'), 
-          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '75'),
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55'),
           variable.name = 'SizeClass', value.name = 'Abundance')
 
 # ==== Add meta data ====
 ## Re-add species names in data frame
 fish.2024$Species <- Fish.2024_speciesList # Added based on original order (!)
 fish.2024$Species <- sub("\\.", "", fish.2024$Species) # Remove points from species names
+
+### Update taxonomy for re-named or previously misidentified species
+fish.2024$Species <-   ifelse(fish.2024$Species == "Pycnochromis dimidiatus", "Pycnochromis fieldi",fish.2024$Species)
 
 ## Species metadata
 fish.2024 <- merge(fish.2024, specieslist, all.x=T, by='Species') # Combine data and specieslist data frames
@@ -361,7 +361,7 @@ fish.2024 <- merge(fish.2024, meta.2024, all.x=T, by='SurveyNo')
 ## For small size classes:
 fish.2024$Biomass_ha <- ((((fish.2024$a * (fish.2024$SizeClass ^ fish.2024$b)) * fish.2024$Abundance)/ fish.2024$Area)/1000)* 10000
 ## For large size class (>11):
-fish.2024$Abundance_11 <- ifelse(fish.2024$SizeClass == 75, fish.2024$Abundance_11, 0) # Remove duplicates
+fish.2024$Abundance_11 <- ifelse(fish.2024$SizeClass == 55, fish.2024$Abundance_11, 0) # Remove duplicates
 fish.2024$Biomass_ha_11 <- ((((fish.2024$a * (fish.2024$SizeClass_11 ^ fish.2024$b)) * fish.2024$Abundance_11)/ fish.2024$Area)/1000)* 10000
 ## Add size classes together
 fish.2024$Biomass_kgha <- fish.2024$Biomass_ha + fish.2024$Biomass_ha_11
@@ -374,6 +374,116 @@ fish.2024$Abundance_m2 <- fish.2024$Abundance/fish.2024$Area
 fish.2024 <- select(fish.2024, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
 fish.2024 <- fish.2024 %>% drop_na(Abundance_m2) # Drop empty rows for surveys not yet done
 
+# ---2025-2026---
+
+# Change empty cells into zeros (needed to correctly read in the data in consecutive steps)
+## Read observation block only (starting from row 3, column 2)
+input_file <- "Raw data/Fish surveys_DATABASE_2025-2026.xlsx"   # your original, styled file
+raw_obs <- read_excel(input_file, sheet = "INPUT Sheet", col_names = FALSE) # Takes ~2 mins
+obs_block <- raw_obs[-c(1, 2), -1, drop = FALSE]  # remove first two rows and first column
+obs_block <- as.data.frame(obs_block, stringsAsFactors = FALSE)
+
+# Step 2: Clean observation block (convert to numeric, replace blanks with 0)
+obs_block[] <- lapply(obs_block, function(col) {
+  col[col == ""] <- NA
+  suppressWarnings(as.numeric(replace(col, is.na(col), 0)))
+})
+
+# Step 3: Load the workbook with formatting intact
+wb <- loadWorkbook(input_file)
+
+# Step 4: Write cleaned values into the same cells (preserving formatting)
+writeData(
+  wb, 
+  sheet = "INPUT Sheet", 
+  x = obs_block, 
+  startRow = 3, 
+  startCol = 2, 
+  colNames = FALSE
+)
+
+## Step 5: Save updated file
+saveWorkbook(wb, "Raw data/Fish surveys_DATABASE_2025-2026_0.xlsx", overwrite = TRUE)
+
+# Get raw data and formats
+fishRaw.2025 <- xlsx_cells("Raw data/Fish surveys_DATABASE_2025-2026_0.xlsx") # Includes all sheets and styles
+fish.2025 <- subset(fishRaw.2025, sheet == "INPUT Sheet") # Data including both Non & Instantaneous observations)
+fish.2025format <- xlsx_formats("Raw data/Fish surveys_DATABASE_2025-2026_0.xlsx") # Formats of all sheets
+
+# Identify non-instantaneous data
+## Identify coloured cells
+Fish.2025_ColouredCells <- fish.2025 %>% 
+  filter(local_format_id %in% which(!is.na(fish.2025format$local$fill$patternFill$fgColor$rgb))) %>%
+  select(address, row, col, data_type)
+## Label them 12 (instantaneous) or 11 (non-instantaneous)
+fish.2025$Coloured <- ifelse(fish.2025$address %in% Fish.2025_ColouredCells$address, 11, 12)
+
+## Tidy data
+fish.2025 <- subset(fish.2025, row > 2) # Remove first two rows row (survey number & size classes)
+fish.2025 <- select(fish.2025, c("row", "col", "character", "numeric", "Coloured")) # Select relevant columns
+Fish.2025_speciesList <- na.omit(fish.2025$character) # Save species list for later use
+fish.2025 <- select(fish.2025, -c("character")) # Remove species column
+fish.2025 <- subset(fish.2025, col > 1) # Remove species column values
+fish.2025$row <- fish.2025$row - 2 # Renumber rows to start at 1
+fish.2025$col <- fish.2025$col - 1 # Renumber columns to start at 1
+
+# To wide format
+fish.2025 <- as.data.frame(fish.2025) # Go from tibble back to dataframe
+fish.2025 <- reshape(fish.2025, idvar = c("row"), timevar = "col", direction = "wide") # To wide format (takes 2 mins)
+
+# Set column names
+fish.2025_surveys.tot <- (ncol(fish.2025) - 1)/24
+fish.2025_colname <- c("Species", paste0(rep(c("c1_", "Coloured_c1_", "c2_", "Coloured_c2_", "c3_", "Coloured_c3_", "c4_", "Coloured_c4_", "c5_", "Coloured_c5_", "c6_", "Coloured_c6_", "c7_", "Coloured_c7_", "c8_", "Coloured_c8_", "c9_", "Coloured_c9_", "c10_", "Coloured_c10_", "c11num_", "Coloured_c11num_", "c11size_", "Coloured_c11size_"), fish.2025_surveys.tot), rep(1:fish.2025_surveys.tot, each = 24)))
+colnames(fish.2025) <- fish.2025_colname
+
+# To long format
+fish.2025 <- setDT(fish.2025)
+fish.2025 <- melt(fish.2025, 
+            id.vars = 'Species', variable.name = 'SurveyNo', 
+            measure.vars = patterns('^c1_', "Coloured_c1_", '^c2_', "Coloured_c2_", '^c3_', "Coloured_c3_", '^c4_', "Coloured_c4_", '^c5_', "Coloured_c5_", '^c6_', "Coloured_c6_", '^c7_', "Coloured_c7_", '^c8_', "Coloured_c8_", '^c9_', "Coloured_c9_", '^c10_', "Coloured_c10_", '^c11num_', "Coloured_c11num_", '^c11size_', "Coloured_c11size_"),
+            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
+
+# Check & summarize if any of the size classes had a coloured cell
+fish.2025$Coloured <- ifelse(fish.2025$Coloured_1.25 + fish.2025$Coloured_3.75 + fish.2025$Coloured_6.25 + fish.2025$Coloured_8.75 + fish.2025$Coloured_12.5 + fish.2025$Coloured_17.5 + fish.2025$Coloured_25 + fish.2025$Coloured_35 + fish.2025$Coloured_45 + fish.2025$Coloured_75 + fish.2025$Coloured_Abundance_11 + fish.2025$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2025 <- dplyr::select(fish.2025, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
+
+# Get Size class from wide to long
+fish.2025 <- reshape2::melt(fish.2025, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Abundance_11', 'SizeClass_11'), 
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55'),
+          variable.name = 'SizeClass', value.name = 'Abundance')
+
+# ==== Add meta data ====
+## Re-add species names in data frame
+fish.2025$Species <- Fish.2025_speciesList # Added based on original order (!)
+fish.2025$Species <- sub("\\.", "", fish.2025$Species) # Remove points from species names
+
+## Species metadata
+fish.2025 <- merge(fish.2025, specieslist, all.x=T, by='Species') # Combine data and specieslist data frames
+fish.2025$SizeClass <- as.numeric(paste(fish.2025$SizeClass)) # Set a numeric Length
+
+## Add survey info
+meta.2025 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2025-2026_0.xlsx", sheet = "Data")) 
+meta.2025 <- meta.2025[!is.na(meta.2025$Date),] # Remove empty rows
+colnames(meta.2025)[1] <- "SurveyNo" 
+meta.2025 <- meta.2025[,c("SurveyNo", "Date", "Location", "Transect", "Observer", "Area", "Comments")] # Select relevant columns
+fish.2025 <- merge(fish.2025, meta.2025, all.x=T, by='SurveyNo')
+
+# ==== Calculate biomass ====
+## For small size classes:
+fish.2025$Biomass_ha <- ((((fish.2025$a * (fish.2025$SizeClass ^ fish.2025$b)) * fish.2025$Abundance)/ fish.2025$Area)/1000)* 10000
+## For large size class (>11):
+fish.2025$Abundance_11 <- ifelse(fish.2025$SizeClass == 55, fish.2025$Abundance_11, 0) # Remove duplicates
+fish.2025$Biomass_ha_11 <- ((((fish.2025$a * (fish.2025$SizeClass_11 ^ fish.2025$b)) * fish.2025$Abundance_11)/ fish.2025$Area)/1000)* 10000
+## Add size classes together
+fish.2025$Biomass_kgha <- fish.2025$Biomass_ha + fish.2025$Biomass_ha_11
+fish.2025$Abundance <- fish.2025$Abundance + fish.2025$Abundance_11
+
+## Standardize abundance
+fish.2025$Abundance_m2 <- fish.2025$Abundance/fish.2025$Area
+
+## Cleanup
+fish.2025 <- select(fish.2025, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
+fish.2025 <- fish.2025 %>% drop_na(Abundance_m2) # Drop empty rows for surveys not yet done
 # ---- MERGE DATASETS ----
 ## Make order match with older dataset
 ### 2023
@@ -388,10 +498,16 @@ fish.2024 <- dplyr::select(fish.2024, c("SurveyNo", "Species", "Coloured", "Diet
 fish.2024$SurveyNo <- as.numeric(fish.2024$SurveyNo)
 fish.2024$SurveyNo <- fish.2024$SurveyNo + surveys.tot
 
-## Merge
-fish <- rbind(fish.2017_2022, fish.2023, fish.2024)
+### 2025
+fish.2025 <- dplyr::select(fish.2025, c("SurveyNo", "Species", "Coloured", "Diet", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
+## Update survey numbers to be continuous
+fish.2025$SurveyNo <- as.numeric(fish.2025$SurveyNo)
+fish.2025$SurveyNo <- fish.2025$SurveyNo + surveys.tot
 
-## Make size classes match (with size class 10 anything >50 cm)
+## Merge
+fish <- rbind(fish.2017_2022, fish.2023, fish.2024, fish.2025)
+
+## Make size classes match (with size class 11 anything >60 cm)
 fish$SizeClass <- ifelse(fish$SizeClass == 1.25, 1,
                   ifelse(fish$SizeClass == 3.75, 2,
                   ifelse(fish$SizeClass == 6.25, 3,       
@@ -400,7 +516,9 @@ fish$SizeClass <- ifelse(fish$SizeClass == 1.25, 1,
                   ifelse(fish$SizeClass == 17.5, 6,       
                   ifelse(fish$SizeClass == 25, 7,       
                   ifelse(fish$SizeClass == 35, 8,       
-                  ifelse(fish$SizeClass == 45, 9, 10)))))))))
+                  ifelse(fish$SizeClass == 45, 9,
+                  ifelse(fish$SizeClass == 55, 10,
+                              11))))))))))
 
 # Match species
 ## Remove cryptic fish
