@@ -152,7 +152,7 @@ fish.2017_2022 <- merge(fish.2017_2022, meta.2017_2022, all.x=T, by='SurveyNo')
 
 # ==== Species information ====
 ## Load and clean
-specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2025-10.xlsx", sheet = "SpeciesList"))
+specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2025-11.xlsx", sheet = "SpeciesList"))
 specieslist$Species <- sub("\\.", "", specieslist$Species) # Remove points from species names
 specieslist <- select(specieslist, c("Species", "Diet", "DietH", "a", "b"))
 
@@ -161,7 +161,7 @@ fish.2017_2022 <- merge(fish.2017_2022, specieslist, all.x=T, by='Species')
 
 # ==== Calculate biomass ====
 ## Get Size class from wide to long
-fish.2017_2022 <- reshape2::melt(fish.2017_2022, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Diet', 'a', 'b',
+fish.2017_2022 <- reshape2::melt(fish.2017_2022, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Diet', 'DietH','a', 'b',
                                                            'Date', 'Location', 'Transect', 'Observer', 'Area', 'Comments'), 
           measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '75', '125', '175'),
           variable.name = 'SizeClass', value.name = 'Abundance')
@@ -256,7 +256,7 @@ fish.2023$Abundance <- fish.2023$Abundance + fish.2023$Abundance_11
 
 ## Standardize abundance
 fish.2023$Abundance_m2 <- fish.2023$Abundance/fish.2023$Area
-
+stop()
 ## Cleanup
 fish.2023 <- select(fish.2023, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
 fish.2023 <- fish.2023 %>% drop_na(Biomass_kgha) # Drop empty rows for surveys not yet done
@@ -330,7 +330,7 @@ fish.2024 <- melt(fish.2024,
             value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
 
 # Check & summarize if any of the size classes had a coloured cell
-fish.2024$Coloured <- ifelse(fish.2024$Coloured_1.25 + fish.2024$Coloured_3.75 + fish.2024$Coloured_6.25 + fish.2024$Coloured_8.75 + fish.2024$Coloured_12.5 + fish.2024$Coloured_17.5 + fish.2024$Coloured_25 + fish.2024$Coloured_35 + fish.2024$Coloured_45 + fish.2024$Coloured_75 + fish.2024$Coloured_Abundance_11 + fish.2024$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2024$Coloured <- ifelse(fish.2024$Coloured_1.25 + fish.2024$Coloured_3.75 + fish.2024$Coloured_6.25 + fish.2024$Coloured_8.75 + fish.2024$Coloured_12.5 + fish.2024$Coloured_17.5 + fish.2024$Coloured_25 + fish.2024$Coloured_35 + fish.2024$Coloured_45 + fish.2024$Coloured_55 + fish.2024$Coloured_Abundance_11 + fish.2024$Coloured_SizeClass_11 == 144, 12, 11)
 fish.2024 <- dplyr::select(fish.2024, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
 
 # Get Size class from wide to long
@@ -444,7 +444,7 @@ fish.2025 <- melt(fish.2025,
             value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
 
 # Check & summarize if any of the size classes had a coloured cell
-fish.2025$Coloured <- ifelse(fish.2025$Coloured_1.25 + fish.2025$Coloured_3.75 + fish.2025$Coloured_6.25 + fish.2025$Coloured_8.75 + fish.2025$Coloured_12.5 + fish.2025$Coloured_17.5 + fish.2025$Coloured_25 + fish.2025$Coloured_35 + fish.2025$Coloured_45 + fish.2025$Coloured_75 + fish.2025$Coloured_Abundance_11 + fish.2025$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2025$Coloured <- ifelse(fish.2025$Coloured_1.25 + fish.2025$Coloured_3.75 + fish.2025$Coloured_6.25 + fish.2025$Coloured_8.75 + fish.2025$Coloured_12.5 + fish.2025$Coloured_17.5 + fish.2025$Coloured_25 + fish.2025$Coloured_35 + fish.2025$Coloured_45 + fish.2025$Coloured_55 + fish.2025$Coloured_Abundance_11 + fish.2025$Coloured_SizeClass_11 == 144, 12, 11)
 fish.2025 <- dplyr::select(fish.2025, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
 
 # Get Size class from wide to long
@@ -487,19 +487,19 @@ fish.2025 <- fish.2025 %>% drop_na(Abundance_m2) # Drop empty rows for surveys n
 # ---- MERGE DATASETS ----
 ## Make order match with older dataset
 ### 2023
-fish.2023 <- dplyr::select(fish.2023, c("SurveyNo", "Species", "Coloured", "Diet", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
+fish.2023 <- dplyr::select(fish.2023, c("SurveyNo", "Species", "Coloured", "Diet", "DietH", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
 ## Update survey numbers to be continuous
 fish.2023$SurveyNo <- as.numeric(fish.2023$SurveyNo)
 fish.2023$SurveyNo <- fish.2023$SurveyNo + surveys.tot
 
 ### 2024
-fish.2024 <- dplyr::select(fish.2024, c("SurveyNo", "Species", "Coloured", "Diet", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
+fish.2024 <- dplyr::select(fish.2024, c("SurveyNo", "Species", "Coloured", "Diet", "DietH", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
 ## Update survey numbers to be continuous
 fish.2024$SurveyNo <- as.numeric(fish.2024$SurveyNo)
 fish.2024$SurveyNo <- fish.2024$SurveyNo + surveys.tot
 
 ### 2025
-fish.2025 <- dplyr::select(fish.2025, c("SurveyNo", "Species", "Coloured", "Diet", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
+fish.2025 <- dplyr::select(fish.2025, c("SurveyNo", "Species", "Coloured", "Diet", "DietH", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
 ## Update survey numbers to be continuous
 fish.2025$SurveyNo <- as.numeric(fish.2025$SurveyNo)
 fish.2025$SurveyNo <- fish.2025$SurveyNo + surveys.tot
@@ -541,7 +541,7 @@ fish$Species[fish$Species == "Pempheris nesogallica"] <- "Pempheris sp"
 meta.all <- dplyr::select(fish, c("SurveyNo", "Date", "Location", "Transect", "Observer", "Comments"))
 meta.all <- meta.all[!duplicated(meta.all[,c('SurveyNo')]),]
 ### Reduce dataframe to values only
-fish <- dplyr::select(fish, -c("Diet","Date", "Location", "Transect", "Observer", "Comments"))
+fish <- dplyr::select(fish, -c("Diet", "DietH", "Date", "Location", "Transect", "Observer", "Comments"))
 ### Fill in missing species with 0 values
 fish <- fish %>% complete(SurveyNo, Species, SizeClass)
 fish$Coloured[is.na(fish$Coloured)] <- 12
@@ -551,7 +551,7 @@ fish$Biomass_kgha[is.na(fish$Biomass_kgha)] <- 0
 ### Re-add meta surveys
 fish <- left_join(fish, meta.all, by = "SurveyNo")
 ### Fill in Diet for newly added species
-specieslist <- dplyr::select(specieslist, c("Species", "Diet"))
+specieslist <- dplyr::select(specieslist, c("Species", "Diet", "DietH"))
 fish <- left_join(fish, specieslist, by = "Species")
 
 ## Add transect info
@@ -596,7 +596,7 @@ fish$Year <- year(fish$Date)
 ## Re-order dataframe
 fish <- dplyr::select(fish, "SurveyNo", "Site", "Treatment", "Patch.type", "Transect", "Year.created", "Date.created", "GPS",
                             "Depth.MLLW", "Reef.dist_m", "AR.dist_m", "Area_m2", "Observer", "Comments", "Year", "Date",
-                            "Species", "Diet", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha", "Coloured")
+                            "Species", "Diet", "DietH", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha", "Coloured")
 
 ## Set apart dataframe with sizeclasses (can't be saved as file is too large: >1M rows)
 fish_sizeclass <- fish
@@ -610,7 +610,7 @@ fish <- dplyr::select(fish, -c("Date.created"))
 
 fish <- aggregate(
   list(Abundance = fish$Abundance, Abundance_m2 = fish$Abundance_m2, Biomass_kgha = fish$Biomass_kgha, Coloured = fish$Coloured),
-       by = list(SurveyNo = fish$SurveyNo, Site = fish$Site, Treatment = fish$Treatment, Patch.type = fish$Patch.type, Transect = fish$Transect, Year.created = fish$Year.created, GPS = fish$GPS, Depth.MLLW = fish$Depth.MLLW, Reef.dist_m = fish$Reef.dist_m, AR.dist_m = fish$AR.dist_m, Area_m2 = fish$Area_m2, Observer = fish$Observer, Comments = fish$Comments, Year = fish$Year, Date = fish$Date, Species = fish$Species, Diet = fish$Diet),
+       by = list(SurveyNo = fish$SurveyNo, Site = fish$Site, Treatment = fish$Treatment, Patch.type = fish$Patch.type, Transect = fish$Transect, Year.created = fish$Year.created, GPS = fish$GPS, Depth.MLLW = fish$Depth.MLLW, Reef.dist_m = fish$Reef.dist_m, AR.dist_m = fish$AR.dist_m, Area_m2 = fish$Area_m2, Observer = fish$Observer, Comments = fish$Comments, Year = fish$Year, Date = fish$Date, Species = fish$Species, Diet = fish$Diet, DietH = fish$DietH),
                   sum)
 
 ## Set Coloured levels back to original scale
@@ -624,11 +624,11 @@ write_xlsx(fish, "Fish_All years.xlsx")
 
 ## Clean environment
 rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.2018, fishRAW.2019, fishRAW.2020, fishRAW.2021, meta.all,
-   meta.2018, meta.2019, meta.2020, meta.2021, meta.2017_2022, specieslist, transectinfo, colname, fish.2023_colname,
-   fish.2023_surveys.tot, Fish.2023_speciesList, surveys.tot,
-   fish.2023, Fish.2023_ColouredCells, fish.2023format, fishRaw.2023, meta.2023, 
-   fish.2024, Fish.2024_ColouredCells, fish.2024format, fishRaw.2024, meta.2024, obs_block, raw_obs, fish.2024_colname,
-   Fish.2024_speciesList, fish.2024_surveys.tot, input_file, wb, fish_sizeclass, co, data_summary)
+   meta.2018, meta.2019, meta.2020, meta.2021, meta.2017_2022, specieslist, transectinfo, colname, 
+   fish.2023, Fish.2023_ColouredCells, fish.2023format, fishRaw.2023, meta.2023, fish.2023_colname, fish.2023_surveys.tot, Fish.2023_speciesList, 
+   fish.2024, Fish.2024_ColouredCells, fish.2024format, fishRaw.2024, meta.2024, fish.2024_colname, fish.2024_surveys.tot, Fish.2024_speciesList, 
+   fish.2025, Fish.2025_ColouredCells, fish.2025format, fishRaw.2025, meta.2025, fish.2025_colname, fish.2025_surveys.tot, Fish.2025_speciesList, 
+   surveys.tot, obs_block, raw_obs,  input_file, wb, fish_sizeclass, co, data_summary)
 
 ```
 
@@ -639,16 +639,15 @@ fish <- as.data.frame(read_excel("Fish_All years.xlsx"))
 
 #remove irrelevant columns
 fish <- fish %>%
-  select(-GPS, -Reef.dist_m, -AR.dist_m, -Year.created)
-
-#specieslist <- as.data.frame(read_excel("Raw data/SpeciesList_2024-07.xlsx"))
-
-# Set data types
-fishtofactors <- c('SurveyNo', 'Site', 'Treatment', 'Patch.type', 'Transect', 'Observer', 'Year', 'Species', 'Diet') 
-fish[fishtofactors] <- lapply(fish[fishtofactors], factor)
+  select(-GPS, -Reef.dist_m, -AR.dist_m, -Year.created, -Date, -Area_m2)
 
 # Select relevant surveys
-fish <- fish[fish$Patch.type %in% c("CAGE", "CAKE","BRU","COMP","Control","Reference"), ]
+fish <- fish[fish$Patch.type %in% c("CAGE", "CAKE","BRU","COMP","Control","Reference") & fish$Year >= 2021, ]
+
+# Set data types
+fishtofactors <- c('SurveyNo', 'Site', 'Treatment', 'Patch.type', 'Transect', 'Observer', 'Year', 'Species', 'Diet', 'DietH') 
+fish[fishtofactors] <- lapply(fish[fishtofactors], factor)
+rm(fishtofactors)
 
 # Remove unused factors
 fish <- droplevels(fish)
@@ -657,9 +656,9 @@ fish <- droplevels(fish)
 fish <- fish[!grepl("test|wrong|exclude", fish$Comments, ignore.case = TRUE), ]
 
 # Get total list of relevant surveys
-totsur <- as.data.frame(unique(fish$SurveyNo))
-names(totsur) <- "SurveyNo"
-totsur <- totsur %>% arrange(SurveyNo)
+#totsur <- as.data.frame(unique(fish$SurveyNo))
+#names(totsur) <- "SurveyNo"
+#totsur <- totsur %>% arrange(SurveyNo)
 
 # Before adding new surveys from 2025-2026 file, there are 454 surveys for the 6 reefs of the study (BRU, COMP, CAKE, CAGE, Control, Reference)
 
