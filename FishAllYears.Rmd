@@ -87,9 +87,9 @@ fish.2021 <- select(fish.2021, -c(1, 3:11)) # Remove irrelevant columns
 fish.2021$Species <- sub("\\.", "", fish.2021$Species) # Remove points from species names
 
 ## Merge all years
-fish.2017_2022 <- left_join(fish.2021, fish.2020, by = "Species")
-fish.2017_2022 <- left_join(fish.2017_2022, fish.2019, by = "Species")
-fish.2017_2022 <- left_join(fish.2017_2022, fish.2018, by = "Species")
+fish.2017_2022 <- left_join(fish.2018, fish.2019, by = "Species")
+fish.2017_2022 <- left_join(fish.2017_2022, fish.2020, by = "Species")
+fish.2017_2022 <- left_join(fish.2017_2022, fish.2021, by = "Species")
 
 ## Get rid of the columns not needed (pre-calculated biomasses)
 fish.2017_2022 <- fish.2017_2022[, -grep(pattern= 'g_', colnames(fish.2017_2022))]
@@ -99,7 +99,7 @@ fish.2017_2022 <- fish.2017_2022[, -grep(pattern='TOT', colnames(fish.2017_2022)
 ## Net NAs to 0 
 fish.2017_2022[is.na(fish.2017_2022)] <- 0
 
-## Set column names (NB: order of surveys won't match original Excel numbering anymore: start numbering at newer survey years)
+## Set column names (NB: order of surveys won't match original Excel numbering anymore: start numbering at oldest survey years)
 surveys.tot <- (ncol(fish.2017_2022) - 1)/13
 colname <- c("Species", paste0(rep(c("1_", "2_", "3_", "4_", "5_", "6_", "7_", "8_", "9_", "10_", "11_", "12_", "Coloured_"),
                                      surveys.tot), rep(1:surveys.tot, each = 13)))
@@ -129,7 +129,9 @@ fish.2017_2022$Species <- ifelse(fish.2017_2022$Species == "Carangoides ferdau",
                  ifelse(fish.2017_2022$Species == "Neotrygon kuhlii", "Neotrygon indica",       
                  ifelse(fish.2017_2022$Species == "Plectroglyphidodon lacrymatus", "Stegastes lacrymatus",       
                  ifelse(fish.2017_2022$Species == "Pseudanthias evansi", "Mirolabrichthys evansi",       
-                 ifelse(fish.2017_2022$Species == "Ulua mentalis", "Atropis mentalis", fish.2017_2022$Species))))))))))))))
+                 ifelse(fish.2017_2022$Species == "Ulua mentalis", "Atropis mentalis", 
+                 ifelse(fish.2017_2022$Species == "Pomacentrus aquilus", "Chrysiptera sp",
+                        fish.2017_2022$Species)))))))))))))))
 fish.2017_2022 <- subset(fish.2017_2022, Species != "NEW SPECIES")
 
 # ==== Meta data 2017-2022 ====
@@ -141,7 +143,7 @@ meta.2021 <- as.data.frame(read_excel("Raw data/Fish surveys_DATABASE_2021-2022.
 meta.2021 <- meta.2021[!is.na(meta.2021$Date),] # Remove empty rows
 
 ## Merge years
-meta.2017_2022 <- rbind(meta.2021, meta.2020, meta.2019, meta.2018)
+meta.2017_2022 <- rbind(meta.2018, meta.2019, meta.2020, meta.2021)
 
 ## Clean up
 meta.2017_2022$SurveyNo <- as.numeric(seq(1, surveys.tot, by = 1))
@@ -256,7 +258,7 @@ fish.2023$Abundance <- fish.2023$Abundance + fish.2023$Abundance_11
 
 ## Standardize abundance
 fish.2023$Abundance_m2 <- fish.2023$Abundance/fish.2023$Area
-stop()
+
 ## Cleanup
 fish.2023 <- select(fish.2023, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
 fish.2023 <- fish.2023 %>% drop_na(Biomass_kgha) # Drop empty rows for surveys not yet done
@@ -484,25 +486,32 @@ fish.2025$Abundance_m2 <- fish.2025$Abundance/fish.2025$Area
 ## Cleanup
 fish.2025 <- select(fish.2025, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
 fish.2025 <- fish.2025 %>% drop_na(Abundance_m2) # Drop empty rows for surveys not yet done
+
 # ---- MERGE DATASETS ----
 ## Make order match with older dataset
 ### 2023
 fish.2023 <- dplyr::select(fish.2023, c("SurveyNo", "Species", "Coloured", "Diet", "DietH", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
 ## Update survey numbers to be continuous
 fish.2023$SurveyNo <- as.numeric(fish.2023$SurveyNo)
+SurveyNo2023 <- max(fish.2023$SurveyNo)
 fish.2023$SurveyNo <- fish.2023$SurveyNo + surveys.tot
+surveys.tot <- surveys.tot + SurveyNo2023
 
 ### 2024
 fish.2024 <- dplyr::select(fish.2024, c("SurveyNo", "Species", "Coloured", "Diet", "DietH", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
 ## Update survey numbers to be continuous
 fish.2024$SurveyNo <- as.numeric(fish.2024$SurveyNo)
+SurveyNo2024 <- max(fish.2024$SurveyNo)
 fish.2024$SurveyNo <- fish.2024$SurveyNo + surveys.tot
+surveys.tot <- surveys.tot + SurveyNo2024
 
 ### 2025
 fish.2025 <- dplyr::select(fish.2025, c("SurveyNo", "Species", "Coloured", "Diet", "DietH", "Date", "Location", "Transect", "Observer", "Comments", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha")) 
 ## Update survey numbers to be continuous
 fish.2025$SurveyNo <- as.numeric(fish.2025$SurveyNo)
+SurveyNo2025 <- max(fish.2025$SurveyNo)
 fish.2025$SurveyNo <- fish.2025$SurveyNo + surveys.tot
+surveys.tot <- surveys.tot + SurveyNo2025
 
 ## Merge
 fish <- rbind(fish.2017_2022, fish.2023, fish.2024, fish.2025)
@@ -521,7 +530,7 @@ fish$SizeClass <- ifelse(fish$SizeClass == 1.25, 1,
                               11))))))))))
 
 # Match species
-## Remove cryptic fish
+## Remove cryptic fish and unknown line
 fish <- fish[!(fish$Species=='Atherinomorus sp' | fish$Species=='Ablabys binotatus' | fish$Species=='Amblyeleotris sp' |
         fish$Species=='Antennarius sp' | fish$Species=='Exallias brevis' | fish$Species=='Gymnomuraena zebra' |
         fish$Species=='Gymnothorax griseus' | fish$Species=='Gymnothorax javanicus' | fish$Species=='Gymnothorax meleagris' |
@@ -529,7 +538,8 @@ fish <- fish[!(fish$Species=='Atherinomorus sp' | fish$Species=='Ablabys binotat
         fish$Species=='Myrichthys maculosus' | fish$Species=='Paracirrhites arcatus' | fish$Species=='Paracirrhites forsteri' |
         fish$Species=='Parapercis hexophtalma' | fish$Species=='Parapercis sp' | fish$Species=='Scorpaenopsis sp' |
         fish$Species=='Scuticaria tigrina' | fish$Species=='Synodus sp' | fish$Species=='Trachyrhamphus bicoarctatus' |
-        fish$Species=='Unknown blenny' | fish$Species=='Valenciennea helsdingenii' | fish$Species=='Valenciennea strigata'),]
+        fish$Species=='Unknown blenny' | fish$Species=='Valenciennea helsdingenii' | fish$Species=='Valenciennea strigata' | 
+        fish$Species=='Tylosurus crocodilus' | fish$Species=='Unknown'),]
 
 ## Update a few species names/identifications
 fish$Species[fish$Species == "Unknown parrotfish"] <- "Scarus sp"
@@ -625,9 +635,11 @@ write_xlsx(fish, "Fish_All years.xlsx")
 ## Clean environment
 rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.2018, fishRAW.2019, fishRAW.2020, fishRAW.2021, meta.all,
    meta.2018, meta.2019, meta.2020, meta.2021, meta.2017_2022, specieslist, transectinfo, colname, 
-   fish.2023, Fish.2023_ColouredCells, fish.2023format, fishRaw.2023, meta.2023, fish.2023_colname, fish.2023_surveys.tot, Fish.2023_speciesList, 
-   fish.2024, Fish.2024_ColouredCells, fish.2024format, fishRaw.2024, meta.2024, fish.2024_colname, fish.2024_surveys.tot, Fish.2024_speciesList, 
-   fish.2025, Fish.2025_ColouredCells, fish.2025format, fishRaw.2025, meta.2025, fish.2025_colname, fish.2025_surveys.tot, Fish.2025_speciesList, 
+   fish.2023, Fish.2023_ColouredCells, fish.2023format, fishRaw.2023, meta.2023, fish.2023_colname, fish.2023_surveys.tot, Fish.2023_speciesList, SurveyNo2023, 
+   fish.2024, Fish.2024_ColouredCells, fish.2024format, fishRaw.2024, meta.2024, fish.2024_colname, fish.2024_surveys.tot, Fish.2024_speciesList,
+   SurveyNo2024, 
+   fish.2025, Fish.2025_ColouredCells, fish.2025format, fishRaw.2025, meta.2025, fish.2025_colname, fish.2025_surveys.tot, Fish.2025_speciesList,
+   SurveyNo2025,
    surveys.tot, obs_block, raw_obs,  input_file, wb, fish_sizeclass, co, data_summary)
 
 ```
@@ -656,11 +668,9 @@ fish <- droplevels(fish)
 fish <- fish[!grepl("test|wrong|exclude", fish$Comments, ignore.case = TRUE), ]
 
 # Get total list of relevant surveys
-#totsur <- as.data.frame(unique(fish$SurveyNo))
-#names(totsur) <- "SurveyNo"
-#totsur <- totsur %>% arrange(SurveyNo)
-
-# Before adding new surveys from 2025-2026 file, there are 454 surveys for the 6 reefs of the study (BRU, COMP, CAKE, CAGE, Control, Reference)
+totsur <- as.data.frame(unique(fish$SurveyNo))
+names(totsur) <- "SurveyNo"
+totsur <- totsur %>% arrange(SurveyNo)
 
 ```
 
