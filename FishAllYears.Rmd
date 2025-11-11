@@ -1,7 +1,7 @@
 =======
 title: "Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size"
 author: "Jorn de Gelder"
-date: "17/09/2025"
+date: "11/11/2025"
 >>>>>>> Stashed changes
 output: html_document
 ---
@@ -181,7 +181,7 @@ fish.2017_2022 <- select(fish.2017_2022, - c("a", "b", "Area"))
 # ---- DATA 2023-2025 ----
 # ---2023-2024---
 # Get raw data and formats
-fishRaw.2023 <- xlsx_cells("Raw data/Fish surveys_DATABASE_2023-2024_0.xlsx") # Includes all sheets
+fishRaw.2023 <- xlsx_cells("Raw data/Fish surveys_DATABASE_2023-2024_0.xlsx") # Includes all sheets and styles
 fish.2023 <- subset(fishRaw.2023, sheet == "INPUT Sheet") # Data including both Non & Instantaneous observations)
 fish.2023format <- xlsx_formats("Raw data/Fish surveys_DATABASE_2023-2024_0.xlsx") # Formats of all sheets
 
@@ -216,16 +216,19 @@ fish.2023 <- setDT(fish.2023)
 fish.2023 <- melt(fish.2023, 
             id.vars = 'Species', variable.name = 'SurveyNo', 
             measure.vars = patterns('^c1_', "Coloured_c1_", '^c2_', "Coloured_c2_", '^c3_', "Coloured_c3_", '^c4_', "Coloured_c4_", '^c5_', "Coloured_c5_", '^c6_', "Coloured_c6_", '^c7_', "Coloured_c7_", '^c8_', "Coloured_c8_", '^c9_', "Coloured_c9_", '^c10_', "Coloured_c10_", '^c11num_', "Coloured_c11num_", '^c11size_', "Coloured_c11size_"),
-            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
+            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  '65',  'Coloured_65', 'SizeClass_11',  'Coloured_SizeClass_11'))
 
 # Check & summarize if any of the size classes had a coloured cell
-fish.2023$Coloured <- ifelse(fish.2023$Coloured_1.25 + fish.2023$Coloured_3.75 + fish.2023$Coloured_6.25 + fish.2023$Coloured_8.75 + fish.2023$Coloured_12.5 + fish.2023$Coloured_17.5 + fish.2023$Coloured_25 + fish.2023$Coloured_35 + fish.2023$Coloured_45 + fish.2023$Coloured_55 + fish.2023$Coloured_Abundance_11 + fish.2023$Coloured_SizeClass_11 == 144, 12, 11)
-fish.2023 <- dplyr::select(fish.2023, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
+fish.2023$Coloured <- ifelse(fish.2023$Coloured_1.25 + fish.2023$Coloured_3.75 + fish.2023$Coloured_6.25 + fish.2023$Coloured_8.75 + fish.2023$Coloured_12.5 + fish.2023$Coloured_17.5 + fish.2023$Coloured_25 + fish.2023$Coloured_35 + fish.2023$Coloured_45 + fish.2023$Coloured_55 + fish.2023$Coloured_65 + fish.2023$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2023 <- dplyr::select(fish.2023, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_65", "Coloured_SizeClass_11"))
 
 # Get Size class from wide to long
-fish.2023 <- reshape2::melt(fish.2023, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Abundance_11', 'SizeClass_11'), 
-          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55'),
+fish.2023 <- reshape2::melt(fish.2023, id.vars = c('SurveyNo', 'Species', 'Coloured', 'SizeClass_11'), 
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55', '65'),
           variable.name = 'SizeClass', value.name = 'Abundance')
+
+#Remove duplicates in sizeclass 11 column
+fish.2023$SizeClass_11 <- ifelse(fish.2023$SizeClass == 65, fish.2023$SizeClass_11, 0)
 
 # ==== Add meta data ====
 ## Re-add species names in data frame
@@ -247,21 +250,21 @@ meta.2023 <- meta.2023[,c("SurveyNo", "Date", "Location", "Transect", "Observer"
 fish.2023 <- merge(fish.2023, meta.2023, all.x=T, by='SurveyNo')
 
 # ==== Calculate biomass ====
-## For small size classes:
-fish.2023$Biomass_ha <- ((((fish.2023$a * (fish.2023$SizeClass ^ fish.2023$b)) * fish.2023$Abundance)/ fish.2023$Area)/1000)* 10000
-## For large size class (11):
-fish.2023$Abundance_11 <- ifelse(fish.2023$SizeClass == 55, fish.2023$Abundance_11, 0) # Remove duplicates
-fish.2023$Biomass_ha_11 <- ((((fish.2023$a * (fish.2023$SizeClass_11 ^ fish.2023$b)) * fish.2023$Abundance_11)/ fish.2023$Area)/1000)* 10000
-## Add size classes together
-fish.2023$Biomass_kgha <- fish.2023$Biomass_ha + fish.2023$Biomass_ha_11
-fish.2023$Abundance <- fish.2023$Abundance + fish.2023$Abundance_11
+## Size class 65 serves as a proxy for the largest class, the actual size is taken from the SizeClass_11 variable
+fish.2023$Biomass_kgha <- ifelse(
+  fish.2023$SizeClass == 65,
+  ((((fish.2023$a * (fish.2023$SizeClass_11 ^ fish.2023$b)) *
+      fish.2023$Abundance) / fish.2023$Area) / 1000) * 10000,
+  ((((fish.2023$a * (fish.2023$SizeClass ^ fish.2023$b)) *
+      fish.2023$Abundance) / fish.2023$Area) / 1000) * 10000
+)
 
 ## Standardize abundance
 fish.2023$Abundance_m2 <- fish.2023$Abundance/fish.2023$Area
 
 ## Cleanup
-fish.2023 <- select(fish.2023, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
-fish.2023 <- fish.2023 %>% drop_na(Biomass_kgha) # Drop empty rows for surveys not yet done
+fish.2023 <- select(fish.2023, - c("a", "b", "Area", "SizeClass_11"))
+fish.2023 <- fish.2023 %>% drop_na(Abundance_m2) # Drop empty rows for surveys not yet done
 
 # ---2024-2025---
 # Change empty cells into zeros (needed to correctly read in the data in consecutive steps)
@@ -329,16 +332,19 @@ fish.2024 <- setDT(fish.2024)
 fish.2024 <- melt(fish.2024, 
             id.vars = 'Species', variable.name = 'SurveyNo', 
             measure.vars = patterns('^c1_', "Coloured_c1_", '^c2_', "Coloured_c2_", '^c3_', "Coloured_c3_", '^c4_', "Coloured_c4_", '^c5_', "Coloured_c5_", '^c6_', "Coloured_c6_", '^c7_', "Coloured_c7_", '^c8_', "Coloured_c8_", '^c9_', "Coloured_c9_", '^c10_', "Coloured_c10_", '^c11num_', "Coloured_c11num_", '^c11size_', "Coloured_c11size_"),
-            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
+            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  '65',  'Coloured_65', 'SizeClass_11',  'Coloured_SizeClass_11'))
 
 # Check & summarize if any of the size classes had a coloured cell
-fish.2024$Coloured <- ifelse(fish.2024$Coloured_1.25 + fish.2024$Coloured_3.75 + fish.2024$Coloured_6.25 + fish.2024$Coloured_8.75 + fish.2024$Coloured_12.5 + fish.2024$Coloured_17.5 + fish.2024$Coloured_25 + fish.2024$Coloured_35 + fish.2024$Coloured_45 + fish.2024$Coloured_55 + fish.2024$Coloured_Abundance_11 + fish.2024$Coloured_SizeClass_11 == 144, 12, 11)
-fish.2024 <- dplyr::select(fish.2024, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
+fish.2024$Coloured <- ifelse(fish.2024$Coloured_1.25 + fish.2024$Coloured_3.75 + fish.2024$Coloured_6.25 + fish.2024$Coloured_8.75 + fish.2024$Coloured_12.5 + fish.2024$Coloured_17.5 + fish.2024$Coloured_25 + fish.2024$Coloured_35 + fish.2024$Coloured_45 + fish.2024$Coloured_55 + fish.2024$Coloured_65 + fish.2024$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2024 <- dplyr::select(fish.2024, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_65", "Coloured_SizeClass_11"))
 
 # Get Size class from wide to long
-fish.2024 <- reshape2::melt(fish.2024, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Abundance_11', 'SizeClass_11'), 
-          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55'),
+fish.2024 <- reshape2::melt(fish.2024, id.vars = c('SurveyNo', 'Species', 'Coloured', 'SizeClass_11'), 
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55', '65'),
           variable.name = 'SizeClass', value.name = 'Abundance')
+
+#Remove duplicates in sizeclass 11 column
+fish.2024$SizeClass_11 <- ifelse(fish.2024$SizeClass == 65, fish.2024$SizeClass_11, 0)
 
 # ==== Add meta data ====
 ## Re-add species names in data frame
@@ -360,20 +366,20 @@ meta.2024 <- meta.2024[,c("SurveyNo", "Date", "Location", "Transect", "Observer"
 fish.2024 <- merge(fish.2024, meta.2024, all.x=T, by='SurveyNo')
 
 # ==== Calculate biomass ====
-## For small size classes:
-fish.2024$Biomass_ha <- ((((fish.2024$a * (fish.2024$SizeClass ^ fish.2024$b)) * fish.2024$Abundance)/ fish.2024$Area)/1000)* 10000
-## For large size class (>11):
-fish.2024$Abundance_11 <- ifelse(fish.2024$SizeClass == 55, fish.2024$Abundance_11, 0) # Remove duplicates
-fish.2024$Biomass_ha_11 <- ((((fish.2024$a * (fish.2024$SizeClass_11 ^ fish.2024$b)) * fish.2024$Abundance_11)/ fish.2024$Area)/1000)* 10000
-## Add size classes together
-fish.2024$Biomass_kgha <- fish.2024$Biomass_ha + fish.2024$Biomass_ha_11
-fish.2024$Abundance <- fish.2024$Abundance + fish.2024$Abundance_11
+## Size class 65 serves as a proxy for the largest class, the actual size is taken from the SizeClass_11 variable
+fish.2024$Biomass_kgha <- ifelse(
+  fish.2024$SizeClass == 65,
+  ((((fish.2024$a * (fish.2024$SizeClass_11 ^ fish.2024$b)) *
+      fish.2024$Abundance) / fish.2024$Area) / 1000) * 10000,
+  ((((fish.2024$a * (fish.2024$SizeClass ^ fish.2024$b)) *
+      fish.2024$Abundance) / fish.2024$Area) / 1000) * 10000
+)
 
 ## Standardize abundance
 fish.2024$Abundance_m2 <- fish.2024$Abundance/fish.2024$Area
 
 ## Cleanup
-fish.2024 <- select(fish.2024, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
+fish.2024 <- select(fish.2024, - c("a", "b", "Area", "SizeClass_11"))
 fish.2024 <- fish.2024 %>% drop_na(Abundance_m2) # Drop empty rows for surveys not yet done
 
 # ---2025-2026---
@@ -443,21 +449,27 @@ fish.2025 <- setDT(fish.2025)
 fish.2025 <- melt(fish.2025, 
             id.vars = 'Species', variable.name = 'SurveyNo', 
             measure.vars = patterns('^c1_', "Coloured_c1_", '^c2_', "Coloured_c2_", '^c3_', "Coloured_c3_", '^c4_', "Coloured_c4_", '^c5_', "Coloured_c5_", '^c6_', "Coloured_c6_", '^c7_', "Coloured_c7_", '^c8_', "Coloured_c8_", '^c9_', "Coloured_c9_", '^c10_', "Coloured_c10_", '^c11num_', "Coloured_c11num_", '^c11size_', "Coloured_c11size_"),
-            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  'Abundance_11',  'Coloured_Abundance_11', 'SizeClass_11',  'Coloured_SizeClass_11'))
+            value.name = c('1.25', 'Coloured_1.25', '3.75', 'Coloured_3.75', '6.25', 'Coloured_6.25', '8.75', 'Coloured_8.75', '12.5', 'Coloured_12.5', '17.5',  'Coloured_17.5', '25', 'Coloured_25', '35', 'Coloured_35', '45', 'Coloured_45', '55', 'Coloured_55',  '65',  'Coloured_65', 'SizeClass_11',  'Coloured_SizeClass_11'))
 
 # Check & summarize if any of the size classes had a coloured cell
-fish.2025$Coloured <- ifelse(fish.2025$Coloured_1.25 + fish.2025$Coloured_3.75 + fish.2025$Coloured_6.25 + fish.2025$Coloured_8.75 + fish.2025$Coloured_12.5 + fish.2025$Coloured_17.5 + fish.2025$Coloured_25 + fish.2025$Coloured_35 + fish.2025$Coloured_45 + fish.2025$Coloured_55 + fish.2025$Coloured_Abundance_11 + fish.2025$Coloured_SizeClass_11 == 144, 12, 11)
-fish.2025 <- dplyr::select(fish.2025, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_Abundance_11", "Coloured_SizeClass_11"))
+fish.2025$Coloured <- ifelse(fish.2025$Coloured_1.25 + fish.2025$Coloured_3.75 + fish.2025$Coloured_6.25 + fish.2025$Coloured_8.75 + fish.2025$Coloured_12.5 + fish.2025$Coloured_17.5 + fish.2025$Coloured_25 + fish.2025$Coloured_35 + fish.2025$Coloured_45 + fish.2025$Coloured_55 + fish.2025$Coloured_65 + fish.2025$Coloured_SizeClass_11 == 144, 12, 11)
+fish.2025 <- dplyr::select(fish.2025, -c("Coloured_1.25", "Coloured_3.75", "Coloured_6.25", "Coloured_8.75", "Coloured_12.5", "Coloured_17.5", "Coloured_25", "Coloured_35", "Coloured_45", "Coloured_55", "Coloured_65", "Coloured_SizeClass_11"))
 
 # Get Size class from wide to long
-fish.2025 <- reshape2::melt(fish.2025, id.vars = c('SurveyNo', 'Species', 'Coloured', 'Abundance_11', 'SizeClass_11'), 
-          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55'),
+fish.2025 <- reshape2::melt(fish.2025, id.vars = c('SurveyNo', 'Species', 'Coloured', 'SizeClass_11'), 
+          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '55', '65'),
           variable.name = 'SizeClass', value.name = 'Abundance')
+
+#Remove duplicates in sizeclass 11 column
+fish.2025$SizeClass_11 <- ifelse(fish.2025$SizeClass == 65, fish.2025$SizeClass_11, 0)
 
 # ==== Add meta data ====
 ## Re-add species names in data frame
 fish.2025$Species <- Fish.2025_speciesList # Added based on original order (!)
 fish.2025$Species <- sub("\\.", "", fish.2025$Species) # Remove points from species names
+
+### Update taxonomy for re-named or previously misidentified species
+fish.2025$Species <-   ifelse(fish.2025$Species == "Pycnochromis dimidiatus", "Pycnochromis fieldi",fish.2025$Species)
 
 ## Species metadata
 fish.2025 <- merge(fish.2025, specieslist, all.x=T, by='Species') # Combine data and specieslist data frames
@@ -471,20 +483,20 @@ meta.2025 <- meta.2025[,c("SurveyNo", "Date", "Location", "Transect", "Observer"
 fish.2025 <- merge(fish.2025, meta.2025, all.x=T, by='SurveyNo')
 
 # ==== Calculate biomass ====
-## For small size classes:
-fish.2025$Biomass_ha <- ((((fish.2025$a * (fish.2025$SizeClass ^ fish.2025$b)) * fish.2025$Abundance)/ fish.2025$Area)/1000)* 10000
-## For large size class (>11):
-fish.2025$Abundance_11 <- ifelse(fish.2025$SizeClass == 55, fish.2025$Abundance_11, 0) # Remove duplicates
-fish.2025$Biomass_ha_11 <- ((((fish.2025$a * (fish.2025$SizeClass_11 ^ fish.2025$b)) * fish.2025$Abundance_11)/ fish.2025$Area)/1000)* 10000
-## Add size classes together
-fish.2025$Biomass_kgha <- fish.2025$Biomass_ha + fish.2025$Biomass_ha_11
-fish.2025$Abundance <- fish.2025$Abundance + fish.2025$Abundance_11
+## Size class 65 serves as a proxy for the largest class, the actual size is taken from the SizeClass_11 variable
+fish.2025$Biomass_kgha <- ifelse(
+  fish.2025$SizeClass == 65,
+  ((((fish.2025$a * (fish.2025$SizeClass_11 ^ fish.2025$b)) *
+      fish.2025$Abundance) / fish.2025$Area) / 1000) * 10000,
+  ((((fish.2025$a * (fish.2025$SizeClass ^ fish.2025$b)) *
+      fish.2025$Abundance) / fish.2025$Area) / 1000) * 10000
+)
 
 ## Standardize abundance
 fish.2025$Abundance_m2 <- fish.2025$Abundance/fish.2025$Area
 
 ## Cleanup
-fish.2025 <- select(fish.2025, - c("a", "b", "Area", "Biomass_ha_11", "Biomass_ha", "Abundance_11", "SizeClass_11"))
+fish.2025 <- select(fish.2025, - c("a", "b", "Area", "SizeClass_11"))
 fish.2025 <- fish.2025 %>% drop_na(Abundance_m2) # Drop empty rows for surveys not yet done
 
 # ---- MERGE DATASETS ----
@@ -554,10 +566,23 @@ meta.all <- meta.all[!duplicated(meta.all[,c('SurveyNo')]),]
 fish <- dplyr::select(fish, -c("Diet", "DietH", "Date", "Location", "Transect", "Observer", "Comments"))
 ### Fill in missing species with 0 values
 fish <- fish %>% complete(SurveyNo, Species, SizeClass)
-fish$Coloured[is.na(fish$Coloured)] <- 12
+
+#Surveys before 2023 do not have fish in class 10 (jumped from 45 to 75 cm), so make colour value equal to the rest of the size classes there.
+fish <- fish %>%
+  group_by(SurveyNo, Species) %>%
+  mutate(
+    Coloured = if_else(
+      SizeClass == 10 & is.na(Coloured),
+      coalesce(Coloured[SizeClass == 9][1], 12),
+      Coloured
+    )
+  ) %>%
+  ungroup()
+
 fish$Abundance[is.na(fish$Abundance)] <- 0
 fish$Abundance_m2[is.na(fish$Abundance_m2)] <- 0
 fish$Biomass_kgha[is.na(fish$Biomass_kgha)] <- 0
+
 ### Re-add meta surveys
 fish <- left_join(fish, meta.all, by = "SurveyNo")
 ### Fill in Diet for newly added species
@@ -624,13 +649,14 @@ fish <- aggregate(
                   sum)
 
 ## Set Coloured levels back to original scale
-fish$Coloured <- ifelse(fish$Coloured == 144, 12, # No colour in 2017 - 2022 dataset (12 * 12 size classes)
-                 ifelse(fish$Coloured == 120, 12, # No colour in 2023+ dataset (12 * 10 size classes)
-                 ifelse(fish$Coloured == 288, 12, # No colour 2017-2022 & species wrongly duplicated across datasets 
-                 ifelse(fish$Coloured == 240, 12,  # No colour 2023+ & species wrongly duplicated across datasets 
+fish$Coloured <- ifelse(fish$Coloured == 156, 12, # No colour in 2017 - 2022 dataset (12 * 13 size classes)
+                 ifelse(fish$Coloured == 132, 12, # No colour in 2023+ dataset (12 * 11 size classes)
+                 ifelse(fish$Coloured == 312, 12, # No colour 2017-2022 & species wrongly duplicated across datasets 
+                 ifelse(fish$Coloured == 264, 12,  # No colour 2023+ & species wrongly duplicated across datasets 
                                               11)))) # All other options: at least one coloured cell
+
 ## Write clean Excel                     
-write_xlsx(fish, "Fish_All years.xlsx")                      
+write_xlsx(fish, "Fish_All yearsTEST.xlsx")                      
 
 ## Clean environment
 rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.2018, fishRAW.2019, fishRAW.2020, fishRAW.2021, meta.all,
