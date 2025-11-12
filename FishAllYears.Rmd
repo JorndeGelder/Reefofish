@@ -1,7 +1,7 @@
 =======
 title: "Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size"
 author: "Jorn de Gelder"
-date: "11/11/2025"
+date: "12/11/2025"
 >>>>>>> Stashed changes
 output: html_document
 ---
@@ -11,7 +11,7 @@ setwd("C:/Users/Jorn de Gelder/Documents/Thesis R")
 
 # Setup
 ```{r setup}
-rm(list=ls()) # Clear workspace
+# rm(list=ls()) # Clear workspace
 knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
 options(scipen = 99) # Have all numbers in non-scientific notation
 
@@ -656,7 +656,7 @@ fish$Coloured <- ifelse(fish$Coloured == 156, 12, # No colour in 2017 - 2022 dat
                                               11)))) # All other options: at least one coloured cell
 
 ## Write clean Excel                     
-write_xlsx(fish, "Fish_All yearsTEST.xlsx")                      
+write_xlsx(fish, "Fish_All years.xlsx")                      
 
 ## Clean environment
 rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.2018, fishRAW.2019, fishRAW.2020, fishRAW.2021, meta.all,
