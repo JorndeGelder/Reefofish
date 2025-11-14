@@ -1,7 +1,7 @@
 =======
 title: "Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size"
 author: "Jorn de Gelder"
-date: "13/11/2025"
+date: "14/11/2025"
 >>>>>>> Stashed changes
 output: html_document
 ---
@@ -11,7 +11,7 @@ setwd("C:/Users/Jorn de Gelder/Documents/Thesis R")
 
 # Setup
 ```{r setup}
-# rm(list=ls()) # Clear workspace
+rm(list=ls()) # Clear workspace
 knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
 options(scipen = 99) # Have all numbers in non-scientific notation
 
@@ -34,6 +34,7 @@ library(viridis) # Convert data from wide to long
 library(pairwiseAdonis)
 library(writexl) # Export Excel
 library(janitor) #Excel functions
+library(fst) # Export fst
 
 # Function to facilitate averaging data frame
 data_summary <- function(data, varname, groupnames){
@@ -121,8 +122,6 @@ for (i in 1:surveys.tot)
       fish.2017_2022[[paste0("11num_", i)]]
   )
   
-  # Biomass column
-  
   # Reorder columns to place 11num_i and 11size_i after 12_i
   col_order <- names(fish.2017_2022)
   idx_12 <- which(col_order == paste0("12_", i))
@@ -161,41 +160,47 @@ fish.2017_2022$Species <- ifelse(fish.2017_2022$Species == "Carangoides ferdau",
                  ifelse(fish.2017_2022$Species == "Plectroglyphidodon lacrymatus", "Stegastes lacrymatus",       
                  ifelse(fish.2017_2022$Species == "Pseudanthias evansi", "Mirolabrichthys evansi",       
                  ifelse(fish.2017_2022$Species == "Ulua mentalis", "Atropis mentalis",
-                 ifelse(fish.2017_2022$Species == "Pomacentrus aquilus", "Chrysiptera sp",  
-                        fish.2017_2022$Species)))))))))))))))
+                 ifelse(fish.2017_2022$Species == "Unknown parrotfish", "Scarus sp",
+                 ifelse(fish.2017_2022$Species == "Pomacentrus aquilus", "Chrysiptera sp", 
+                 ifelse(fish.2017_2022$Species == "Pomacentrus philippinus", "Neopomacentrus cyanomos", 
+                 ifelse(fish.2017_2022$Species == "Pempheris nesogallica", "Pempheris sp", 
+                        fish.2017_2022$Species))))))))))))))))))
 fish.2017_2022 <- subset(fish.2017_2022, Species != "NEW SPECIES")
 
-# Pomacentrus aquilus is a special case, because it has to get merged with an already existing entry (Chrysiptera sp), being probably misidentified earlier. First we determine whether to add up the Pom aqu counts and Chr sp counts, based on if and when they were observed.
+# Pomacentrus aquilus & phillipinus as well as Pempheris nesogallica are special cases, because they have to get merged with an already existing entry, being probably misidentified earlier. First we determine whether to add up the counts, based on if and when they were observed.
+# Target species
+target_species <- c("Chrysiptera sp", "Neopomacentrus cyanomos", "Pempheris sp")
+
 fish.2017_2022 <- fish.2017_2022 %>%
-  group_by(SurveyNo) %>%
+  # Step 1: calculate sum11 and sum12 for each species per SurveyNo
+  group_by(SurveyNo, Species) %>%
   mutate(
-    sum11 = sum(Abundance[Species == "Chrysiptera sp" & Coloured == 11], na.rm = TRUE),
-    sum12 = sum(Abundance[Species == "Chrysiptera sp" & Coloured == 12], na.rm = TRUE)
+    sum11 = if_else(Species %in% target_species,
+                    sum(Abundance[Coloured == 11], na.rm = TRUE),
+                    NA_real_),
+    sum12 = if_else(Species %in% target_species,
+                    sum(Abundance[Coloured == 12], na.rm = TRUE),
+                    NA_real_)
   ) %>%
   ungroup() %>%
   
+  # Step 2: filter rows according to the same rules as before
   filter(
-    Species != "Chrysiptera sp" | (
-      # Case 1: both > 0 → remove 11
-      !(sum11 > 0 & sum12 > 0 & Coloured == 11) &
-      # Case 2: sum11 > 0 & sum12 == 0 → remove 12
-      !(sum11 > 0 & sum12 == 0 & Coloured == 12) &
-      # Case 3: sum11 == 0 & sum12 > 0 → remove 11
-      !(sum11 == 0 & sum12 > 0 & Coloured == 11) &
-      # Case 4: both 0 → remove 11
-      !(sum11 == 0 & sum12 == 0 & Coloured == 11)
-    )
-  )%>% select(-sum11, -sum12)  
-
-# Then, in case both were observed during the survey: add abundances up and remove the duplicate row.
-fish.2017_2022 <- fish.2017_2022 %>%
+    !(Species %in% target_species & (
+        (sum11 > 0 & sum12 > 0 & Coloured == 11) |
+        (sum11 > 0 & sum12 == 0 & Coloured == 12) |
+        (sum11 == 0 & sum12 > 0 & Coloured == 11) |
+        (sum11 == 0 & sum12 == 0 & Coloured == 11)
+      ))
+  ) %>%
+  select(-sum11, -sum12) %>%
+  
+  # Step 3: combine abundances for duplicate SizeClass rows within target species
   group_by(SurveyNo, Species, SizeClass) %>%
   mutate(
-    Abundance = ifelse(Species == "Chrysiptera sp",
-                       sum(Abundance, na.rm = TRUE),
-                       Abundance)
+    Abundance = if_else(Species %in% target_species, sum(Abundance, na.rm = TRUE), Abundance)
   ) %>%
-  filter(!(Species == "Chrysiptera sp" & duplicated(SizeClass))) %>%
+  filter(!(Species %in% target_species & duplicated(SizeClass))) %>%
   ungroup()
 
 # ==== Meta data 2017-2022 ====
@@ -642,11 +647,6 @@ fish <- fish[!(fish$Species=='Atherinomorus sp' | fish$Species=='Ablabys binotat
         fish$Species=='Unknown blenny' | fish$Species=='Valenciennea helsdingenii' | fish$Species=='Valenciennea strigata' | 
         fish$Species=='Tylosurus crocodilus' | fish$Species=='Unknown'),]
 
-## Update a few species names/identifications
-fish$Species[fish$Species == "Unknown parrotfish"] <- "Scarus sp"
-fish$Species[fish$Species == "Pomacentrus philippinus"] <- "Neopomacentrus cyanomos"
-fish$Species[fish$Species == "Pempheris nesogallica"] <- "Pempheris sp"
-
 ## Fill in missing species on both sides
 ### Set apart metadata first
 meta.all <- dplyr::select(fish, c("SurveyNo", "Date", "Location", "Transect", "Observer", "Comments"))
@@ -676,7 +676,19 @@ transectinfo$Transect <- tolower(transectinfo$Transect)
 
 fish <- left_join(fish, transectinfo, by = "Transect")
 
+## Replace the 65-proxy by the actual size of the largest class, which varies between species / survey. If there is no fish in the largest class, keep 65 in the frame.
+fish <- fish %>%
+  mutate(SizeClass = ifelse(SizeClass == 65 & Abundance > 0, SizeClass_11, SizeClass)) %>%
+  select(-SizeClass_11)
+
+# Rename SizeClass to Size, considering it is not a class system now
+fish <- fish %>% rename(Size = SizeClass)
+
+#Make Size numeric to allow ordering to size
+fish$Size <- as.numeric(fish$Size)
+
 # Cleanup
+fish <- fish %>% distinct()
 fish$Type <- ifelse(fish$Transect == "na", "Reference", fish$Type)
 fish$Site <- ifelse(fish$Transect == "na", fish$Location, 
              ifelse(is.na(fish$Site), fish$Location, fish$Site))
@@ -709,7 +721,7 @@ fish$Year <- year(fish$Date)
 ## Re-order dataframe
 fish <- dplyr::select(fish, "SurveyNo", "Site", "Treatment", "Patch.type", "Transect", "Year.created", "Date.created", "GPS",
                             "Depth.MLLW", "Reef.dist_m", "AR.dist_m", "Area_m2", "Observer", "Comments", "Year", "Date",
-                            "Species", "Diet", "DietH", "SizeClass", "Abundance", "Abundance_m2", "Biomass_kgha", "Coloured", "SizeClass_11")
+                            "Species", "Diet", "DietH", "Size", "Abundance", "Abundance_m2", "Biomass_kgha", "Coloured")
 
 ## Remove NAs before aggregating
 fish <- fish %>%
@@ -718,20 +730,8 @@ fish <- fish %>%
   mutate_if(is.numeric, ~replace_na(., -1)) 
 fish <- dplyr::select(fish, -c("Date.created"))
 
-#Make Size numeric to allow ordering to size
-fish$SizeClass <- as.numeric(fish$SizeClass)
-
-#Format as wide, because .xlsx has a max of 1M rows
-fish <- fish %>%
-  pivot_wider(
-    names_from = SizeClass,
-    values_from = Abundance,
-    values_fill = 0,          # Fill missing with 0
-    values_fn = sum           # Aggregate duplicates by summing (Sizes above 55 occur multiple times, but are separate rows)
-  )
-
-## Write clean Excel                     
-write_xlsx(fish, "Fish_All years.xlsx")                      
+## Write clean fst                   
+write_fst(fish, "Fish_All years.fst")
 
 ## Clean environment
 rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.2018, fishRAW.2019, fishRAW.2020, fishRAW.2021, meta.all,
@@ -741,63 +741,14 @@ rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.201
    SurveyNo2024, 
    fish.2025, Fish.2025_ColouredCells, fish.2025format, fishRaw.2025, meta.2025, fish.2025_colname, fish.2025_surveys.tot, Fish.2025_speciesList,
    SurveyNo2025,
-   surveys.tot, obs_block, raw_obs,  input_file, wb, fish_sizeclass, co, data_summary, biomass_sum, col_order, cols, i, idx_12)
+   surveys.tot, obs_block, raw_obs,  input_file, wb, fish_sizeclass, co, data_summary, biomass_sum, col_order, cols, i, idx_12, target_species)
 
 ```
 
 # Load (merged) data
 ```{r}
 # Load data sets
-fish <- as.data.frame(read_excel("Fish_All years.xlsx"))
-
-# Identify ID columns
-id_cols <- c("SurveyNo", "Site", "Treatment", "Patch.type", "Transect", "Year.created", "Date.created", "GPS",
-            "Depth.MLLW", "Reef.dist_m", "AR.dist_m", "Area_m2", "Observer", "Comments", "Year", "Date",
-            "Species", "Diet", "DietH", "Abundance_m2", "Biomass_kgha", "Coloured", "SizeClass_11")
-# Everything else are the size columns to pivot
-value_cols <- setdiff(names(fish), id_cols) 
-
-# Pivot to long
-fish <- fish %>%
-  pivot_longer(
-    cols = all_of(value_cols),   # only pivot size columns
-    names_to = "SizeClass",
-    values_to = "Abundance"
-  ) %>%
-  mutate(SizeClass = as.numeric(SizeClass))  # convert Size to numeric
-
-rm(id_cols, value_cols)
-
-## Replace the 65-proxy by the actual size of the largest class, which varies between species / survey. If there is no fish in the largest class, keep 65 in the frame.
-fish <- fish %>%
-  mutate(SizeClass = ifelse(SizeClass == 65 & Abundance > 0, SizeClass_11, SizeClass)) %>%
-  select(-SizeClass_11)
-
-## Remove all duplicate rows that were caused by carrying over Biomass_kgha and Abundance_m2 when converting long > wide > long
-fish <- fish %>%
-  mutate(
-    Abundance_m2 = if_else(Abundance == 0, 0, Abundance_m2),
-    Biomass_kgha = if_else(Abundance == 0, 0, Biomass_kgha))
-fish <- fish %>%
-  distinct()
-fish <- fish %>%
-  group_by(Species, SurveyNo, SizeClass) %>%
-  filter(!(n() > 1 & Abundance == 0)) %>%
-  ungroup()
-
-fish <- fish %>%
-  group_by(Species, SurveyNo) %>%
-  filter(
-    !(SizeClass == 65 & Abundance == 0 & any(SizeClass >= 60 & Abundance > 0))
-  ) %>%
-  ungroup()
-
-# Rename SizeClass to Size, considering it is not a class system now
-fish <- fish %>%
-    rename(Size = SizeClass)
-
-#Make Size numeric to allow ordering to size
-fish$Size <- as.numeric(fish$Size)
+fish <- read_fst("Fish_All years.fst")
 
 # Remove irrelevant columns
 fish <- fish %>%
@@ -818,14 +769,9 @@ fish <- droplevels(fish)
 fish <- fish[!grepl("test|wrong|exclude", fish$Comments, ignore.case = TRUE), ]
 
 # Get total list of relevant surveys
-totsur <- as.data.frame(unique(fish$SurveyNo))
-names(totsur) <- "SurveyNo"
-totsur <- totsur %>% arrange(SurveyNo)
-
-exceptions <- fish %>%
-  group_by(Species, SurveyNo) %>%
-  summarise(n_sizes = n(), .groups = "drop") %>%
-  filter(n_sizes != 11)
+surveylist <- as.data.frame(unique(fish$SurveyNo))
+names(surveylist) <- "SurveyNo"
+surveylist <- surveylist %>% arrange(SurveyNo)
 
 sum(fish$Biomass_kgha)
 sum(fish$Abundance)
