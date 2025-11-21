@@ -24,6 +24,7 @@ library(tidyverse) # Beta regression
 library(vegan) # Export Excel
 library(gridExtra)
 library(emmeans) # Select text from string
+library(lme4)
 library(lmerTest) # GLS
 library(officer) # Move table into word
 library(gridGraphics) # Combine base and ggplots
@@ -35,13 +36,15 @@ library(pairwiseAdonis)
 library(writexl) # Export Excel
 library(janitor) # Excel functions
 library(arrow) # Write & read Parquet
+library(ggpubr) # for checking normality
+library(influence.ME) # for checking influence and outliers
 
 # Set colours for Treatments
-co <- c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733") # Added "#FF5733"
+#co <- c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733") # Added "#FF5733"
 
 ```
 
-# Load RAW data (ONLY NEED TO RUN THIS ONCE: Takes about 30 mins)
+# Load RAW data (Only need to run after new raw data input: Takes about 30 mins)
 ```{r data load, warning= FALSE}
 
 # ---- DATA 2017-2022 ----
@@ -736,7 +739,7 @@ rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.201
 
 ```
 
-# Load (merged) data
+# Filtering RAW output to relevant information
 ```{r}
 
 # Load data sets
@@ -744,169 +747,236 @@ fish <- read_parquet("Fish_All years.parquet")
 
 # Remove irrelevant columns
 fish <- fish %>%
-  select(-GPS, -Reef.dist_m, -AR.dist_m, -Year.created, -Area_m2, -Site, -Diet)
+  select(-GPS, -Year.created, -Area_m2, -Diet)
 
 # Select relevant surveys
 fish <- fish[fish$Patch.type %in% c("CAGE", "CAKE","BRU","COMP","Control","Reference") & fish$Year >= 2021,]
 
+# Add a YearGroup variable, to compare between 2021, 2023 and 2025
+fish$YearGroup <- ifelse(fish$Year %in% c(2021, 2022), "2021–2022",
+                   ifelse(fish$Year %in% c(2023, 2024), "2023–2024",
+                   ifelse(fish$Year == 2025, "2025", NA)))
+fish <- fish %>% relocate(YearGroup, .after = Year)
+
 # Set data types
-fishtofactors <- c('SurveyNo', 'Treatment', 'Patch.type', 'Transect', 'Observer', 'Year', 'Species', 'DietH') 
+fishtofactors <- c('SurveyNo', 'Site', 'Treatment', 'Patch.type', 'Transect', 'Observer', 'Year', 'YearGroup','Species', 'DietH', 'Size') 
 fish[fishtofactors] <- lapply(fish[fishtofactors], factor)
 rm(fishtofactors)
 
 # Remove unused factors-
 fish <- droplevels(fish)
 
-## Exclude /practise surveys
+# Exclude /practise surveys
 fish <- fish[!grepl("exclude|wrong|exclude", fish$Comments, ignore.case = TRUE), ]
 
-# Get total list of relevant surveys
-#surveylist <- as.data.frame(unique(fish$SurveyNo))
-#names(surveylist) <- "SurveyNo"
-#surveylist <- surveylist %>% arrange(SurveyNo)
+write_parquet(fish, "Fish_Clean.parquet")
 
-# Total biomass & abundance of all entries
-#sum(fish$Biomass_kgha)
-#sum(fish$Abundance)
-
+# # Get total list of relevant surveys
+# surveylist <- as.data.frame(unique(fish$SurveyNo))
+# names(surveylist) <- "SurveyNo"
+# surveylist <- surveylist %>% arrange(SurveyNo)
+# 
+# # Total biomass & abundance of all entries
+# sum(fish$Biomass_kgha)
+# sum(fish$Abundance)
+# 
 # Check average radius in last couple years, taking out duplicate surveys
-#fish_unique <- fish[!duplicated(fish[c("Transect", "Date")]), ]
-#fish_unique$YearGroup <- ifelse(fish_unique$Year %in% c(2021, 2022), "2021–2022",
-#                   ifelse(fish_unique$Year %in% c(2023, 2024), "2023–2024",
-#                   ifelse(fish_unique$Year == 2025, "2025", NA)))
-#aggregate (Radius ~ YearGroup, data = fish_unique, FUN = mean)
+fish_unique <- fish[!duplicated(fish[c("Transect", "Date")]), ]
+aggregate (Radius ~ YearGroup, data = fish_unique, FUN = mean)
 
 ```
 
-# Richness
-```{r richness}
-
+# Load in data 
+```{r}
+fish <- read_parquet("Fish_Clean.parquet")
+```
+# Species richness
+```{r}
 # ---- DATA PREP ----
-# fishRich
 # Remove rows with no abundance or non-herbivorous fish
 fishRich <- fish[fish$Abundance != 0 & fish$DietH != "Other",]
 
-## CONTINUE
+#Calculate mean herbivore species richness per survey
+Richness <- fishRich %>%
+  #Unique species for each raw survey record
+  group_by(Patch.type, Transect,Depth.MLLW, YearGroup, Date,  Observer) %>%
+  summarise(richness = n_distinct(Species)) %>%
+  
+  #Average when a survey is done with two observers
+  group_by(Patch.type, Transect,Depth.MLLW, YearGroup, Date) %>%
+  summarise(richness_mean_observers = mean(richness)) %>% 
 
-# Combine all species each of the six patch types & note down survey count per patch type for average
-#SurveyCount <- aggregate (fishRich, by Patch.type, data = fishRich, FUN=length)
-#SurveyCount <- select(SurveyCount, c())
-#fishRich <- aggregate(fishRich, by Patch.type,data = fishRich, FUN=sum) 
+  #Average when a transect is surveyed multiple times in the same year group (21-22/23-24/25)
+  group_by(Patch.type, Transect,Depth.MLLW, YearGroup) %>% 
+  summarise(Mean_Richness_perSurvey = mean(richness_mean_observers))
 
-## Average surveys done simultaneously
-fishRichsumsubmeans <- fishRichsum 
-fishRichsumsubmeans <- aggregate(S ~ Transect + Date + Year, fishRichsumsubmeans, mean)
+Richness$Mean_Richness_perSurveyLog10 <- log10(Richness$Mean_Richness_perSurvey)
+```
+## Plots
+```{r}
+# Calculate standard deviation per group
+Richness_SD <- Richness %>%
+   group_by(Patch.type) %>%
+   summarise(
+     Mean_Richness_perPatch = mean(Mean_Richness_perSurvey),
+     SD_Richness_perPatch = sd(Mean_Richness_perSurvey),
+     .groups = "drop"
+   )
 
-## Average over replicate transects within each Year 
-fishRichsumsubtransmeans <- fishRichsumsubmeans
-fishRichsumsubtransmeans <- aggregate(S ~ Transect + Year, fishRichsumsubtransmeans, mean)
+Richness_combined <- Richness %>% left_join(Richness_SD, by = "Patch.type")
 
+# Plot
+ggplot(Richness_combined, aes(x = Patch.type, y = Mean_Richness_perSurvey)) +
+   geom_point(position = position_jitter(width = 0.2), alpha = 0.6, color="grey") +  # individual points
+   geom_point(data = Richness_combined, aes(x = Patch.type, y = Mean_Richness_perPatch),
+              color = "black", size = 4, shape = 18) +  # mean points (red diamonds)
+   geom_errorbar(data = Richness_combined,
+                 aes(x = Patch.type,
+                     ymin = Mean_Richness_perPatch - SD_Richness_perPatch,
+                     ymax = Mean_Richness_perPatch + SD_Richness_perPatch),
+                 width = 0.1, color = "blue") +  # error bars
+   labs(title = "Herbivore species richness",
+        x = "Patch type",
+        y = "Herbivore species richness") +
+   ylim(0,NA) +
+   theme_minimal()
+ 
+# Checking for normality 
+ggplot(Richness, aes(x = Mean_Richness_perSurvey)) +
+          geom_histogram(binwidth = 1, center = 0, fill = "grey", color = "black") +
+          scale_x_continuous(breaks = min(Richness$Mean_Richness_perSurvey):max(Richness$Mean_Richness_perSurvey))
+            # Is right-skewed
 
-# SPECIES LISTS
-## Create data frame
-Specs <- left_join(surveys, div, by = "SurveyNo")
+# Log10 transformed, using density plot because histogram breaks would look weird in this scale
+ggdensity(Richness$Mean_Richness_perSurveyLog10,
+          main = "Density plot of  richness",
+          xlab = "Species richness (log-transformed)")
+            # Normally distributed
 
-## Cleanup
-Specs <- select(Specs, -c("SurveyNo", "Observer", "Date", "Area", "Comments"))
-Specs <- select(Specs, -c("Location"))
+ggqqplot(Richness$Mean_Richness_perSurveyLog10)
+```
+## Statistical models
+```{r richness}
+# Including Diet group leads to a non-normal distribution, thus left out for these models
+model1<- lmer(Mean_Richness_perSurvey ~ Depth.MLLW + YearGroup * Patch.type + (1|Transect), data = Richness) 
+model2<- lmer(Mean_Richness_perSurvey ~ Depth.MLLW + YearGroup + Patch.type + (1|Transect), data = Richness) 
+model3<- lmer(Mean_Richness_perSurvey ~ YearGroup * Patch.type + (1|Transect), data = Richness) 
+model4<- lmer(Mean_Richness_perSurvey ~ Patch.type + (1|Transect), data = Richness) 
+model5<- lmer(Mean_Richness_perSurvey ~ YearGroup + (1|Transect), data = Richness)
 
-Specs.sum <- aggregate(. ~ Year + Transect, Specs, sum)
-Specs.sum <- select(Specs.sum, -c("Transect"))
+# Compare models
+anova(model1,model2,model3, model4,model5)
 
+##### Interpretation of results:
+## Model 2 fits best, so without interaction factor betwteen YearGroup and Patch.type.
 
-lmerSmeancor<- lmer(S ~ Year + (1|Transect), data = divsumsubmeans)
-car::Anova(lmerSmeancor)
-summary(lmerSmeancor)
+# Testing diagnostics for model 2
+## Normality
+res <- resid(model2)
+qqnorm(res) 
+qqline(res) # Dots are around line, visual inspection says normal distribution
+shapiro.test(resid(model2)) #p>0.05 thus normal distributed
 
-##### Interpretation of results
-##Results from the linear mixed model indicate that species richness (S) did not change significantly across the sampled years. The model tested for differences relative to a baseline year, and while species richness appeared slightly lower in 2020 (p = 0.0738) and slightly higher in 2023 (p = 0.0799), these effects were only marginally significant and should be interpreted with caution. There was no meaningful variation among transects (the random effect variance was essentially zero), suggesting that most of the variation in species richness was within transects rather than between them. The residual standard deviation was relatively high (SD = 5.55), indicating notable unexplained variability. The model also showed a singular fit, meaning the random effects structure may be too complex or unnecessary for this dataset. Overall, species richness remained relatively stable over time with no strong or consistent trend.
-
-### Model validation
-mod <- lmerSmeancor # set model to be validated
-op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
-plot(resid(mod, type = "pearson") ~ fitted(mod)) # fitted vs residuals
-abline(0,0)
-hist(resid(mod, type = "pearson"), main = "") # histogram residuals
-qqnorm(resid(mod, type = "pearson")) # QQplot residuals
-plot(divsumsubmeans$Year, resid(mod, type = "pearson")) # residuals split over Date
-abline(0,0)
-plot(fitted(mod) ~ divsumsubmeans$S) # response data vs fitted
-par(op)
-
-### Post hoc
-emmScor<- emmeans(lmerSmeancor, specs = pairwise ~ Year, adjust = 'tukey', type = "response") 
-emmScorsum <- multcomp::cld(emmScor$emmeans, alpha = 0.05, Letters = letters, reversed = FALSE) # get CLD
-emmScorsum <- emmScorsum %>% dplyr::mutate(.group = str_squish(.group)) # remove white spaces
-
-# ---- PLOTS ----
-### Richness 
-Divplot <- ggplot(data = divsumsubmeans, aes(x = Year, colour = Year, y = S)) +
-    geom_jitter(width = 0.2, size = 2) +
-    scale_colour_manual(values = co) +
-    geom_point(data = emmScorsum, aes(y = emmean), size = 4, colour = 'black') +
-    geom_errorbar(data = emmScorsum, width = 0.1, colour = 'black', size = 0.8,
-                  aes(y = emmean, ymin = emmean - SE, ymax = emmean + SE)) +
-    geom_text(data = emmScorsum, 
-              aes(label = .group, y = emmean + 2.2 * SE), colour = 'black', size = 7) +
-    labs(y = "Fish species richness (S)", x = "Year") +
-    scale_y_continuous(breaks = c(10, 20, 30)) +
-    theme_bw() +
-    theme(axis.title.y = element_text(size = 14, face = "plain", vjust = 3),
-          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
-          axis.title.x = element_text(size = 14, face = "plain", vjust = 3),
-          axis.text.x = element_text(size = 14, face = "bold", vjust = 0.4),
-          legend.position = "none")
-
-print(Divplot)
-
-
-#ggsave("Fish_Richness_Years.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
+## Homoscedasticity
+plot(fitted(model2), resid(model2),
+     xlab = "Fitted values", ylab = "Residuals")
+abline(h = 0, col = "red")
 
 ```
 
-# Biomass & Abundance
-## Biomass
-### Treatment comparisons
-```{r biomass treatment}
-
+# Biomass
+```{r}
 # ---- DATA PREP ----
-fish[, 3:14] <- lapply(fish[, 3:14], function(x) as.numeric(as.character(x)))
-bio <- fish[rowSums(fish[,3:14]) != 0, ] # Remove species not observed in a survey
-bio <- bio[bio$Coloured == 12, ] # Remove non-instantaneous data (colored Excel cells)
-bio <- select(bio, -c("Coloured"))
+# Remove rows with no abundance, non-herbivorous fish, and non-instantaneous data
+fishBio <- fish[fish$Abundance != 0 & fish$DietH != "Other" & fish$Coloured == 12,]
 
-## Add info
-bio <- merge(bio, surveys, all.x=T, by='SurveyNo')
-bio <- merge(bio, specieslist, all.x=T, by='Species')
+#Calculate mean herbivore species abundance per survey
+Biomass <- fishBio %>%
+  #Unique species for each raw survey record
+  group_by(Patch.type, Transect,Depth.MLLW, YearGroup, Date,  Observer) %>%
+  summarise(fishBio = sum(Biomass_kgha)) %>%
+  
+  #Average when a survey is done with two observers
+  group_by(Patch.type, Transect,Depth.MLLW, YearGroup, Date) %>%
+  summarise(biomass_mean_observers = mean(fishBio)) %>% 
 
-## Get Size class from wide to long
-bio <- reshape2::melt(bio, id.vars = c('SurveyNo', 'Year','Transect', 'Species', 'Diet', 'a', 'b', 'Area'), 
-          measure.vars = c('1.25', '3.75', '6.25', '8.75', '12.5', '17.5', '25', '35', '45', '75', '125', '175'),
-          variable.name = 'SizeClass', value.name = 'Abundance')
+  #Average when a transect is surveyed multiple times in the same year group (21-22/23-24/25)
+  group_by(Patch.type, Transect,Depth.MLLW, YearGroup) %>% 
+  summarise(Mean_Biomass_perSurvey = mean(biomass_mean_observers))
 
-## Cleanup
-bio <- bio[bio$Abundance != 0,] # Remove size classes not observed per species (to speed up R)
-bio$SizeClass <- as.numeric(paste(bio$SizeClass)) # Set a numeric Length
-
-## Calculate biomass using the length-weight formula W = a * L^b, multiply per abundance and standardize to kg/ha
-bio$Biomass_ha <- ((((bio$a * (bio$SizeClass ^ bio$b)) * bio$Abundance)/ bio$Area)/1000)* 10000
-
-## Select
-bio.cor <- select(bio, - c("Transect","a", "b")) # Keep area in corrected dataset to recalculate biomass
-bio <- select(bio.cor, - c("Area"))
-
-## Make already a grouping, for Ordination analysis on Diet level
-bioDiet <- spread(bio, key = Diet, value = Biomass_ha) # Make Diet section from long to wide
-bioDiet <- bioDiet[,-c(3:5)] #Remove unnecessary columns
-bioDiet[is.na(bioDiet)] <- 0
-bioDiet <- merge(bioDiet, totsur, all.y=T) # Re-add surveys without observations
-bioDiet[is.na(bioDiet)] <- 0
-bioDiet <- aggregate(. ~ SurveyNo, data = bioDiet, FUN = sum) # Sum each Diet per Survey
-
+Biomass$Mean_Biomass_perSurveyLog10 <- log10(Biomass$Mean_Biomass_perSurvey)
 ```
+## Plots
+```{r}
+# Calculate standard deviation per group
+Biomass_SD <- Biomass %>%
+   group_by(Patch.type) %>%
+   summarise(
+     Mean_Biomass_perPatch = mean(Mean_Biomass_perSurvey),
+     SD_Biomass_perPatch = sd(Mean_Biomass_perSurvey),
+     .groups = "drop"
+   )
 
-# Biomass treatment
-```{r biomass treatment}
+Biomass_combined <- Biomass %>% left_join(Biomass_SD, by = "Patch.type")
+
+# Plot
+ggplot(Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perSurvey)) +
+   geom_point(position = position_jitter(width = 0.2), alpha = 0.6, color="grey") +  # individual points
+   geom_point(data = Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perPatch),
+              color = "black", size = 4, shape = 18) +  # mean points (red diamonds)
+   geom_errorbar(data = Biomass_combined,
+                 aes(x = Patch.type,
+                     ymin = Mean_Biomass_perPatch - SD_Biomass_perPatch,
+                     ymax = Mean_Biomass_perPatch + SD_Biomass_perPatch),
+                 width = 0.1, color = "blue") +  # error bars
+   labs(title = "Herbivore species Biomass",
+        x = "Patch type",
+        y = "Herbivore species Biomass") +
+   ylim(0,NA) +
+   theme_minimal()
+ 
+# Checking for normality 
+ggdensity(Biomass$Mean_Biomass_perSurvey,
+          main = "Density plot of  Biomass",
+          xlab = "Species Biomass")
+            # Normally distributed
+
+# Log10 transformed, using density plot because histogram breaks would look weird in this scale
+ggdensity(Biomass$Mean_Biomass_perSurveyLog10,
+          main = "Density plot of  Biomass",
+          xlab = "Species Biomass (log-transformed)")
+            # Normally distributed
+
+# Calculate standard deviation per group
+Biomass_SDLog10 <- Biomass %>%
+   group_by(Patch.type) %>%
+   summarise(
+     Mean_Biomass_perPatchLog10 = mean(Mean_Biomass_perSurveyLog10),
+     SD_Biomass_perPatchLog10 = sd(Mean_Biomass_perSurveyLog10),
+     .groups = "drop"
+   )
+
+Biomass_combined <- Biomass %>% left_join(Biomass_SDLog10, by = "Patch.type")
+
+# Plot
+ggplot(Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perSurveyLog10)) +
+   geom_point(position = position_jitter(width = 0.2), alpha = 0.6, color="grey") +  # individual points
+   geom_point(data = Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perPatchLog10),
+              color = "black", size = 4, shape = 18) +  # mean points (red diamonds)
+   geom_errorbar(data = Biomass_combined,
+                 aes(x = Patch.type,
+                     ymin = Mean_Biomass_perPatchLog10 - SD_Biomass_perPatchLog10,
+                     ymax = Mean_Biomass_perPatchLog10 + SD_Biomass_perPatchLog10),
+                 width = 0.1, color = "blue") +  # error bars
+   labs(title = "Herbivore species Biomass",
+        x = "Patch type",
+        y = "Herbivore species Biomass") +
+   theme_minimal()
+
+ggqqplot(Biomass$Mean_Biomass_perSurveyLog10)
+```
+## Statistical models
+```{r}
 ## Summarize per survey - Biomass
 biosum <- merge(surveys[ ,c(1:6)], bio, by = "SurveyNo", all.x=T)
 biosum <- biosum[,-c(6)]
@@ -943,7 +1013,9 @@ summary(lmerBiomeans)
 
 #### Interpretation of results
 #The linear mixed model analyzing log-transformed biomass per hectare revealed some evidence of temporal variation across years. Biomass in 2023 was significantly lower than the baseline year (p = 0.0115), while 2020 also showed a marginally significant decline (p = 0.0500). Other years did not differ significantly from the baseline. The model included transect as a random effect, which accounted for a small amount of variance (SD = 0.095), indicating slight variation in biomass levels between transects. The residual variation remained moderate (SD = 0.411), suggesting most variation was within transects or not explained by year alone. Overall, these results suggest that biomass was relatively stable in most years, but showed notable declines in 2020 and especially 2023.
-
+```
+## Comparison of models
+```{r}
 ### Model validation
 mod <- lmerBiomeans # set model to be validated
 op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
@@ -985,16 +1057,83 @@ Bioplot <- ggplot(data = biosumsubtransmeans, aes(x = Year, y = Biomass_ha, colo
 print(Bioplot)
 
 #ggsave("Fish_Biomass.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
+```
+
+# Abundance
+## Plots
+```{r}
+# ---- MODELLING ----
+
+## ==== Model ====
+### Prep data
+abusumsubmeans <- abusum
+abusumsubmeans$Abundance_m2 <- abusumsubmeans$Abundance / abusumsubmeans$Area 
+abusumsubmeans <- aggregate(Abundance_m2 ~ Transect + Date + Year, abusumsubmeans, mean) # Mean simul surveys
+abusumsubtransmeans <- aggregate(Abundance_m2 ~ Transect + Year, abusumsubmeans, mean) # Mean per Patch
+
+### Modelling
+#### Log-transformed because of heterogeneity residuals
+abusumsubmeans$Abundance_m2[abusumsubmeans$Abundance_m2 == 0] <- min(abusumsubmeans$Abundance_m2[abusumsubmeans$Abundance_m2>0])/2
+
+### Model
+lmerAbumeans <- lmer(log10(Abundance_m2) ~ Year + (1|Transect), data = abusumsubmeans)
+car::Anova(lmerAbumeans)
+```
+
+## Statistical models
+```{r}
+```
+
+## Comparison of models
+```{r}
+### Validation
+mod <- lmerAbumeans # set model to be validated
+op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
+plot(resid(mod, type = "pearson") ~ fitted(mod)) # fitted vs residuals
+abline(0,0)
+hist(resid(mod, type = "pearson"), main = "") # histogram residuals
+qqnorm(resid(mod, type = "pearson")) # QQplot residuals
+plot(abusumsubmeans$Year, resid(mod, type = "pearson")) # residuals split over Date
+abline(0,0)
+plot(fitted(mod) ~ log10(abusumsubmeans$Abundance_m2)) # response data vs fitted
+par(op)
+
+### Post hoc
+emmAbu <- emmeans(lmerAbumeans, list(pairwise ~ Year), adjust='tukey', type = "response")
+emmAbusum <- multcomp::cld(emmAbu$emmeans, alpha = 0.05, Letters = letters, reversed = FALSE) # get CLD
+emmAbusum <- emmAbusum %>% dplyr::mutate(.group = str_squish(.group)) # remove white spaces
+
+# ---- PLOTS ----
+
+## ==== not adjusted ====
+### Abundance- not adjusted
+Abuplot <- ggplot(data = abusumsubtransmeans, aes(x = Year, colour = Year, y = Abundance_m2)) + 
+    geom_jitter(width = 0.2, size = 2) +
+    geom_point(data = emmAbusum, aes(y = response), colour = 'black', size = 4) +
+    geom_errorbar(data = emmAbusum, width = 0.1, colour = 'black', size = 0.8,
+                  aes(y = response, ymin = response - SE, ymax = response + SE)) +
+    geom_text(data = emmAbusum, 
+              aes(label = .group, y = response + 3.5 * SE), colour = 'black', size = 7) +
+    labs(y = expression(paste("Fish abundance (", m^-2, ")")), x = "Year") +  # Set x-axis title to "Year"
+    scale_y_continuous(trans = 'log10', breaks = c(0.1, 1, 10)) +
+    coord_cartesian(ylim = c(0.05, 11)) +
+    scale_color_manual(values = co) +
+    theme_bw() +
+    theme(axis.title.y = element_text(size = 14, face = "plain", vjust = 2.7),
+          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
+          axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),  # Restore x-axis title formatting
+          axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5),     # Restore x-axis labels
+          legend.position = "none")
 
 
+print(Abuplot)
+
+#ggsave("Fish_Abundance_Years.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
 ```
 
 ### Composition comparisons
-<!--
-Composition comparisons done on Biomass level, because more informative than on Abundance level
--->
 ```{r biomass composition}
-
+# Composition comparisons done on Biomass level, because more informative than on Abundance level
 # ---- DATA PREP ----
 ## ==== Species ====
 ### Create data frame
@@ -1326,73 +1465,20 @@ base::print(doc, target="Fish_BC Table Diet x Treatment.docx")
 
 ```
 
-## Abundance
-### Treatment comparisons
-```{r abundance treatment}
+# Ordination plots
+```{r}
 
-# ---- MODELLING ----
-
-## ==== Model ====
-### Prep data
-abusumsubmeans <- abusum
-abusumsubmeans$Abundance_m2 <- abusumsubmeans$Abundance / abusumsubmeans$Area 
-abusumsubmeans <- aggregate(Abundance_m2 ~ Transect + Date + Year, abusumsubmeans, mean) # Mean simul surveys
-abusumsubtransmeans <- aggregate(Abundance_m2 ~ Transect + Year, abusumsubmeans, mean) # Mean per Patch
-
-### Modelling
-#### Log-transformed because of heterogeneity residuals
-abusumsubmeans$Abundance_m2[abusumsubmeans$Abundance_m2 == 0] <- min(abusumsubmeans$Abundance_m2[abusumsubmeans$Abundance_m2>0])/2
-
-### Model
-lmerAbumeans <- lmer(log10(Abundance_m2) ~ Year + (1|Transect), data = abusumsubmeans)
-car::Anova(lmerAbumeans)
-
-### Validation
-mod <- lmerAbumeans # set model to be validated
-op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
-plot(resid(mod, type = "pearson") ~ fitted(mod)) # fitted vs residuals
-abline(0,0)
-hist(resid(mod, type = "pearson"), main = "") # histogram residuals
-qqnorm(resid(mod, type = "pearson")) # QQplot residuals
-plot(abusumsubmeans$Year, resid(mod, type = "pearson")) # residuals split over Date
-abline(0,0)
-plot(fitted(mod) ~ log10(abusumsubmeans$Abundance_m2)) # response data vs fitted
-par(op)
-
-### Post hoc
-emmAbu <- emmeans(lmerAbumeans, list(pairwise ~ Year), adjust='tukey', type = "response")
-emmAbusum <- multcomp::cld(emmAbu$emmeans, alpha = 0.05, Letters = letters, reversed = FALSE) # get CLD
-emmAbusum <- emmAbusum %>% dplyr::mutate(.group = str_squish(.group)) # remove white spaces
-
-# ---- PLOTS ----
-
-## ==== not adjusted ====
-### Abundance- not adjusted
-Abuplot <- ggplot(data = abusumsubtransmeans, aes(x = Year, colour = Year, y = Abundance_m2)) + 
-    geom_jitter(width = 0.2, size = 2) +
-    geom_point(data = emmAbusum, aes(y = response), colour = 'black', size = 4) +
-    geom_errorbar(data = emmAbusum, width = 0.1, colour = 'black', size = 0.8,
-                  aes(y = response, ymin = response - SE, ymax = response + SE)) +
-    geom_text(data = emmAbusum, 
-              aes(label = .group, y = response + 3.5 * SE), colour = 'black', size = 7) +
-    labs(y = expression(paste("Fish abundance (", m^-2, ")")), x = "Year") +  # Set x-axis title to "Year"
-    scale_y_continuous(trans = 'log10', breaks = c(0.1, 1, 10)) +
-    coord_cartesian(ylim = c(0.05, 11)) +
-    scale_color_manual(values = co) +
-    theme_bw() +
-    theme(axis.title.y = element_text(size = 14, face = "plain", vjust = 2.7),
-          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
-          axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),  # Restore x-axis title formatting
-          axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5),     # Restore x-axis labels
-          legend.position = "none")
-
-
-print(Abuplot)
-
-#ggsave("Fish_Abundance_Years.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
-
+# ---- DATA PREP ----
+## Make already a grouping, for Ordination analysis on Diet level
+bioDiet <- spread(bio, key = Diet, value = Biomass_ha) # Make Diet section from long to wide
+bioDiet <- bioDiet[,-c(3:5)] #Remove unnecessary columns
+bioDiet[is.na(bioDiet)] <- 0
+bioDiet <- merge(bioDiet, totsur, all.y=T) # Re-add surveys without observations
+bioDiet[is.na(bioDiet)] <- 0
+bioDiet <- aggregate(. ~ SurveyNo, data = bioDiet, FUN = sum) # Sum each Diet per Survey
 
 ```
+
 
 # Figure compilation
 ```{r compilation}
@@ -1415,6 +1501,3 @@ COR$Biomass <- biosumsubtransmeans$Biomass_ha
 write_xlsx(COR, "Structural complexity_Fish surveys_2022-08_Averages per year.xlsx")
 
 ```
-
-
-
