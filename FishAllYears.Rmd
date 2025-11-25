@@ -37,7 +37,10 @@ library(writexl) # Export Excel
 library(janitor) # Excel functions
 library(arrow) # Write & read Parquet
 library(ggpubr) # for checking normality
+library(ggeffects) # for visualization
 library(influence.ME) # for checking influence and outliers
+library(glmmTMB) #negative binomial
+library(DHARMa) #for checking NB GLMM
 
 # Set colours for Treatments
 #co <- c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733") # Added "#FF5733"
@@ -771,18 +774,19 @@ fish <- fish[!grepl("exclude|wrong|exclude", fish$Comments, ignore.case = TRUE),
 
 write_parquet(fish, "Fish_Clean.parquet")
 
-# # Get total list of relevant surveys
-# surveylist <- as.data.frame(unique(fish$SurveyNo))
-# names(surveylist) <- "SurveyNo"
-# surveylist <- surveylist %>% arrange(SurveyNo)
+# Get total list of relevant surveys
+surveylist <- as.data.frame(unique(fish$SurveyNo))
+names(surveylist) <- "SurveyNo"
+surveylist <- surveylist %>% arrange(SurveyNo)
 # 
 # # Total biomass & abundance of all entries
 # sum(fish$Biomass_kgha)
 # sum(fish$Abundance)
 # 
-# Check average radius in last couple years, taking out duplicate surveys
-fish_unique <- fish[!duplicated(fish[c("Transect", "Date")]), ]
-aggregate (Radius ~ YearGroup, data = fish_unique, FUN = mean)
+# # Check average radius in last couple years, taking out duplicate surveys
+# fish_unique <- fish[!duplicated(fish[c("Transect", "Date")]), ]
+# aggregate(Radius ~ YearGroup, data = fish_unique,
+#           FUN = function(x) round(mean(x), 2))
 
 ```
 
@@ -794,93 +798,150 @@ fish <- read_parquet("Fish_Clean.parquet")
 ```{r}
 # ---- DATA PREP ----
 # Remove rows with no abundance or non-herbivorous fish
-fishRich <- fish[fish$Abundance != 0 & fish$DietH != "Other",]
+Richness <- fish[fish$DietH != "Other" & fish$DietH != "na",]
 
-#Calculate mean herbivore species richness per survey
-Richness <- fishRich %>%
-  #Unique species for each raw survey record
-  group_by(Patch.type, Transect,Depth.MLLW, YearGroup, Date,  Observer) %>%
-  summarise(richness = n_distinct(Species)) %>%
-  
-  #Average when a survey is done with two observers
-  group_by(Patch.type, Transect,Depth.MLLW, YearGroup, Date) %>%
-  summarise(richness_mean_observers = mean(richness)) %>% 
+all_combos <- expand_grid(
+  SurveyNo = unique(Richness$SurveyNo),
+  DietH = unique(Richness$DietH))
 
-  #Average when a transect is surveyed multiple times in the same year group (21-22/23-24/25)
-  group_by(Patch.type, Transect,Depth.MLLW, YearGroup) %>% 
-  summarise(Mean_Richness_perSurvey = mean(richness_mean_observers))
+# Go from abundance to species richness, and bringing back 0 values for groups without observations
+## First store metadata
+survey_meta <- Richness %>%
+  select(SurveyNo, Transect, Depth.MLLW, Reef.dist_m, AR.dist_m, YearGroup, Date, Patch.type, Treatment, Observer) %>%
+  distinct()
 
-Richness$Mean_Richness_perSurveyLog10 <- log10(Richness$Mean_Richness_perSurvey)
+Richness <- Richness %>%
+  group_by(SurveyNo, DietH) %>%
+  summarise(SpeciesRichness = n_distinct(Species[Abundance > 0]),
+            .groups = "drop") %>%
+  right_join(all_combos, by = c("SurveyNo", "DietH")) %>%
+  mutate(SpeciesRichness = replace_na(SpeciesRichness, 0))
+
+# Bring back the lost metadata 
+Richness <- Richness %>%
+  left_join(survey_meta, by = "SurveyNo")
+rm(survey_meta, all_combos)
+
+# Go from character to numeric for distances, taking NA's into account
+Richness$AR.dist_m    <- as.numeric(trimws(Richness$AR.dist_m))
+Richness$Reef.dist_m  <- as.numeric(trimws(Richness$Reef.dist_m))
+
+# Make combined variable for taking intra-survey Observer differences into account in the model
+Richness$TransectDate <- paste(Richness$Transect, Richness$Date, sep="_")
+
 ```
 ## Plots
 ```{r}
-# Calculate standard deviation per group
-Richness_SD <- Richness %>%
-   group_by(Patch.type) %>%
-   summarise(
-     Mean_Richness_perPatch = mean(Mean_Richness_perSurvey),
-     SD_Richness_perPatch = sd(Mean_Richness_perSurvey),
-     .groups = "drop"
-   )
-
-Richness_combined <- Richness %>% left_join(Richness_SD, by = "Patch.type")
-
-# Plot
-ggplot(Richness_combined, aes(x = Patch.type, y = Mean_Richness_perSurvey)) +
-   geom_point(position = position_jitter(width = 0.2), alpha = 0.6, color="grey") +  # individual points
-   geom_point(data = Richness_combined, aes(x = Patch.type, y = Mean_Richness_perPatch),
-              color = "black", size = 4, shape = 18) +  # mean points (red diamonds)
-   geom_errorbar(data = Richness_combined,
-                 aes(x = Patch.type,
-                     ymin = Mean_Richness_perPatch - SD_Richness_perPatch,
-                     ymax = Mean_Richness_perPatch + SD_Richness_perPatch),
-                 width = 0.1, color = "blue") +  # error bars
-   labs(title = "Herbivore species richness",
-        x = "Patch type",
-        y = "Herbivore species richness") +
-   ylim(0,NA) +
-   theme_minimal()
- 
-# Checking for normality 
-ggplot(Richness, aes(x = Mean_Richness_perSurvey)) +
-          geom_histogram(binwidth = 1, center = 0, fill = "grey", color = "black") +
-          scale_x_continuous(breaks = min(Richness$Mean_Richness_perSurvey):max(Richness$Mean_Richness_perSurvey))
-            # Is right-skewed
-
-# Log10 transformed, using density plot because histogram breaks would look weird in this scale
-ggdensity(Richness$Mean_Richness_perSurveyLog10,
-          main = "Density plot of  richness",
-          xlab = "Species richness (log-transformed)")
-            # Normally distributed
-
-ggqqplot(Richness$Mean_Richness_perSurveyLog10)
+# # Calculate standard deviation per group
+# Richness_SD <- Richness %>%
+#    group_by(Patch.type, DietH) %>%
+#    summarise(
+#      Mean_Richness_perPatch = mean(Mean_Richness_perSurvey),
+#      SD_Richness_perPatch = sd(Mean_Richness_perSurvey),
+#      .groups = "drop"
+#    )
+# 
+# Richness_combined <- Richness %>% left_join(Richness_SD, by = "Patch.type")
+# 
+# # Plot
+# ggplot(Richness_combined, aes(x = Patch.type, y = Mean_Richness_perSurvey)) +
+#    geom_point(position = position_jitter(width = 0.2), alpha = 0.6, color="grey") +  # individual points
+#    geom_point(data = Richness_combined, aes(x = Patch.type, y = Mean_Richness_perPatch),
+#               color = "black", size = 4, shape = 18) +  # mean points (red diamonds)
+#    geom_errorbar(data = Richness_combined,
+#                  aes(x = Patch.type,
+#                      ymin = Mean_Richness_perPatch - SD_Richness_perPatch,
+#                      ymax = Mean_Richness_perPatch + SD_Richness_perPatch),
+#                  width = 0.1, color = "blue") +  # error bars
+#    labs(title = "Herbivore species richness",
+#         x = "Patch type",
+#         y = "Herbivore species richness") +
+#    ylim(0,NA) +
+#    theme_minimal()
+#  
+# # Checking for normality 
+# ggplot(Richness, aes(x = Mean_Richness_perSurvey)) +
+#           geom_histogram(binwidth = 1, center = 0, fill = "grey", color = "black") +
+#           scale_x_continuous(breaks = min(Richness$Mean_Richness_perSurvey):max(Richness$Mean_Richness_perSurvey))
+#             # Is right-skewed
+# 
+# # Log10 transformed, using density plot because histogram breaks would look weird in this scale
+# ggdensity(Richness$Mean_Richness_perSurveyLog10,
+#           main = "Density plot of  richness",
+#           xlab = "Species richness (log-transformed)")
+#             # Normally distributed
+# 
+# ggqqplot(Richness$Mean_Richness_perSurveyLog10)
 ```
 ## Statistical models
 ```{r richness}
-# Including Diet group leads to a non-normal distribution, thus left out for these models
-model1<- lmer(Mean_Richness_perSurvey ~ Depth.MLLW + YearGroup * Patch.type + (1|Transect), data = Richness) 
-model2<- lmer(Mean_Richness_perSurvey ~ Depth.MLLW + YearGroup + Patch.type + (1|Transect), data = Richness) 
-model3<- lmer(Mean_Richness_perSurvey ~ YearGroup * Patch.type + (1|Transect), data = Richness) 
-model4<- lmer(Mean_Richness_perSurvey ~ Patch.type + (1|Transect), data = Richness) 
-model5<- lmer(Mean_Richness_perSurvey ~ YearGroup + (1|Transect), data = Richness)
+# Model from paper
+modelOG<- lmer(SpeciesRichness ~ Depth.MLLW + Reef.dist_m +  AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) +
+(1 | TransectDate:Observer), data = Richness) 
+# modelpois<- glmer(SpeciesRichness ~ Depth.MLLW + Reef.dist_m +  AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) +
+# (1 | TransectDate:Observer), data = Richness, family = "poisson") 
+model <- glmmTMB(SpeciesRichness ~ Depth.MLLW + Reef.dist_m +  AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) +
+(1 | TransectDate:Observer), data=Richness, family=nbinom2)
 
-# Compare models
-anova(model1,model2,model3, model4,model5)
+# Look at model
+summary(model)
+
+### Post hoc
+emmeans(model, list(pairwise ~ YearGroup), adjust='tukey', type = "response") 
 
 ##### Interpretation of results:
-## Model 2 fits best, so without interaction factor betwteen YearGroup and Patch.type.
+## There are three non-significant effects: the covariates Reef distance and AR distance, as well as Patch.type
 
 # Testing diagnostics for model 2
+## Linearity of only continuous variable
+Richness_combined <- Richness %>% 
+  group_by(SurveyNo, Depth.MLLW) %>% 
+  summarise (SpeciesRichness = sum(SpeciesRichness))
+
+plot(Richness_combined$Depth.MLLW, Richness_combined$SpeciesRichness, xlab = "Depth", ylab = "Species richness", main = "Species richness vs Depth (covariate)")
+abline(lm(SpeciesRichness ~ Depth.MLLW, data = Richness_combined))
+sum_lm <- summary (lm(SpeciesRichness ~ Depth.MLLW, data = Richness_combined))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 10,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# simulate residuals
+sim_res <- simulateResiduals(fittedModel = model, n = 1000)
+
+# plot residuals
+plot(sim_res)
+
+# check for residual patterns by predictor
+# plotResiduals(sim_res, form = ~ DietH)
+
 ## Normality
-res <- resid(model2)
+res <- resid(model)
 qqnorm(res) 
 qqline(res) # Dots are around line, visual inspection says normal distribution
-shapiro.test(resid(model2)) #p>0.05 thus normal distributed
+shapiro.test(res) #p>0.05 thus normal distributed
 
 ## Homoscedasticity
-plot(fitted(model2), resid(model2),
+plot(fitted(model), resid(model),
      xlab = "Fitted values", ylab = "Residuals")
 abline(h = 0, col = "red")
+
+
+
+#lot(ggpredict(model1, "Treatment"))
+#plot(ggpredict(model1, "YearGroup"))
 
 ```
 
@@ -932,7 +993,7 @@ ggplot(Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perSurvey)) +
    labs(title = "Herbivore species Biomass",
         x = "Patch type",
         y = "Herbivore species Biomass") +
-   ylim(0,NA) +
+   ylim(0,200) +
    theme_minimal()
  
 # Checking for normality 
@@ -968,7 +1029,7 @@ ggplot(Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perSurveyLog10)) +
                      ymin = Mean_Biomass_perPatchLog10 - SD_Biomass_perPatchLog10,
                      ymax = Mean_Biomass_perPatchLog10 + SD_Biomass_perPatchLog10),
                  width = 0.1, color = "blue") +  # error bars
-   labs(title = "Herbivore species Biomass",
+   labs(title = "Herbivore species Biomass log-transformed",
         x = "Patch type",
         y = "Herbivore species Biomass") +
    theme_minimal()
