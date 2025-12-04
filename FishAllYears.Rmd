@@ -38,12 +38,9 @@ library(janitor) # Excel functions
 library(arrow) # Write & read Parquet
 library(ggpubr) # for checking normality
 library(ggeffects) # for visualization
-library(influence.ME) # for checking influence and outliers
 library(glmmTMB) #negative binomial
-library(DHARMa) #for checking NB GLMM
-
-# Set colours for Treatments
-#co <- c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733") # Added "#FF5733"
+library(DHARMa) #for checking NB & CMP GLMM
+library(robustlmm)
 
 ```
 
@@ -650,12 +647,13 @@ meta.all <- meta.all[!duplicated(meta.all[,c('SurveyNo')]),]
 ### Reduce dataframe to values only
 fish <- dplyr::select(fish, -c("Diet", "DietH", "Date", "Location", "Transect", "Radius", "Area", "Observer", "Comments"))
 
-### Fill in missing species with 0 values
+### Fill in missing species with 0 values, or 12 in the case of Coloured
 fish <- fish %>% complete(SurveyNo, Species, SizeClass)
 
 fish$Abundance[is.na(fish$Abundance)] <- 0
 fish$Abundance_m2[is.na(fish$Abundance_m2)] <- 0
 fish$Biomass_kgha[is.na(fish$Biomass_kgha)] <- 0
+fish$Coloured <- ifelse(fish$Coloured == -1, 12, fish$Coloured)
 
 ### Re-add meta surveys
 fish <- left_join(fish, meta.all, by = "SurveyNo")
@@ -765,6 +763,8 @@ fish <- fish %>% relocate(YearGroup, .after = Year)
 fishtofactors <- c('SurveyNo', 'Site', 'Treatment', 'Patch.type', 'Transect', 'Observer', 'Year', 'YearGroup','Species', 'DietH', 'Size') 
 fish[fishtofactors] <- lapply(fish[fishtofactors], factor)
 rm(fishtofactors)
+fish$AR.dist_m    <- as.numeric(trimws(fish$AR.dist_m))
+fish$Reef.dist_m  <- as.numeric(trimws(fish$Reef.dist_m))
 
 # Remove unused factors-
 fish <- droplevels(fish)
@@ -772,16 +772,21 @@ fish <- droplevels(fish)
 # Exclude /practise surveys
 fish <- fish[!grepl("exclude|wrong|exclude", fish$Comments, ignore.case = TRUE), ]
 
+# Now we add some variables useful for modelling later on
+## Combined variable for taking intra-survey Observer differences into account in the model
+fish$TransectDate <- paste(fish$Transect, fish$Date, sep="_")
+
+## Replace NA's in distances with 0's, these are excluded using :Treatment later. If we keep them NA, the entire row is excluded.
+fish$Reefdistance <- fish$Reef.dist_m %>% replace(is.na(.), 0)
+fish$ARdistance <- fish$AR.dist_m %>% replace(is.na(.), 0)
+
+# Now we write a clean survey file for modelling
 write_parquet(fish, "Fish_Clean.parquet")
 
-# Get total list of relevant surveys
-surveylist <- as.data.frame(unique(fish$SurveyNo))
-names(surveylist) <- "SurveyNo"
-surveylist <- surveylist %>% arrange(SurveyNo)
-# 
-# # Total biomass & abundance of all entries
-# sum(fish$Biomass_kgha)
-# sum(fish$Abundance)
+# # Get total list of relevant surveys
+# surveylist <- as.data.frame(unique(fish$SurveyNo))
+# names(surveylist) <- "SurveyNo"
+# surveylist <- surveylist %>% arrange(SurveyNo)
 # 
 # # Check average radius in last couple years, taking out duplicate surveys
 # fish_unique <- fish[!duplicated(fish[c("Transect", "Date")]), ]
@@ -797,105 +802,86 @@ fish <- read_parquet("Fish_Clean.parquet")
 # Species richness
 ```{r}
 # ---- DATA PREP ----
-# Remove rows with no abundance or non-herbivorous fish
-Richness <- fish[fish$DietH != "Other" & fish$DietH != "na",]
+# Remove rows with non-herbivorous fish, and drop the "Other" level
+Richness <- fish[fish$DietH != "Other",]
+Richness <- droplevels(Richness)
 
 all_combos <- expand_grid(
   SurveyNo = unique(Richness$SurveyNo),
   DietH = unique(Richness$DietH))
 
-# Go from abundance to species richness, and bringing back 0 values for groups without observations
+# Go from abundance to species richness, and bring back 0 values for groups without observations
 ## First store metadata
 survey_meta <- Richness %>%
-  select(SurveyNo, Transect, Depth.MLLW, Reef.dist_m, AR.dist_m, YearGroup, Date, Patch.type, Treatment, Observer) %>%
+  select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
   distinct()
 
+## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
 Richness <- Richness %>%
   group_by(SurveyNo, DietH) %>%
   summarise(SpeciesRichness = n_distinct(Species[Abundance > 0]),
             .groups = "drop") %>%
-  right_join(all_combos, by = c("SurveyNo", "DietH")) %>%
-  mutate(SpeciesRichness = replace_na(SpeciesRichness, 0))
+  right_join(all_combos, by = c("SurveyNo", "DietH")) 
 
-# Bring back the lost metadata 
+## Bring back metadata lost in group_by
 Richness <- Richness %>%
   left_join(survey_meta, by = "SurveyNo")
 rm(survey_meta, all_combos)
 
-# Go from character to numeric for distances, taking NA's into account
-Richness$AR.dist_m    <- as.numeric(trimws(Richness$AR.dist_m))
-Richness$Reef.dist_m  <- as.numeric(trimws(Richness$Reef.dist_m))
-
-# Make combined variable for taking intra-survey Observer differences into account in the model
-Richness$TransectDate <- paste(Richness$Transect, Richness$Date, sep="_")
-
 ```
-## Plots
-```{r}
-# # Calculate standard deviation per group
-# Richness_SD <- Richness %>%
-#    group_by(Patch.type, DietH) %>%
-#    summarise(
-#      Mean_Richness_perPatch = mean(Mean_Richness_perSurvey),
-#      SD_Richness_perPatch = sd(Mean_Richness_perSurvey),
-#      .groups = "drop"
-#    )
-# 
-# Richness_combined <- Richness %>% left_join(Richness_SD, by = "Patch.type")
-# 
-# # Plot
-# ggplot(Richness_combined, aes(x = Patch.type, y = Mean_Richness_perSurvey)) +
-#    geom_point(position = position_jitter(width = 0.2), alpha = 0.6, color="grey") +  # individual points
-#    geom_point(data = Richness_combined, aes(x = Patch.type, y = Mean_Richness_perPatch),
-#               color = "black", size = 4, shape = 18) +  # mean points (red diamonds)
-#    geom_errorbar(data = Richness_combined,
-#                  aes(x = Patch.type,
-#                      ymin = Mean_Richness_perPatch - SD_Richness_perPatch,
-#                      ymax = Mean_Richness_perPatch + SD_Richness_perPatch),
-#                  width = 0.1, color = "blue") +  # error bars
-#    labs(title = "Herbivore species richness",
-#         x = "Patch type",
-#         y = "Herbivore species richness") +
-#    ylim(0,NA) +
-#    theme_minimal()
-#  
-# # Checking for normality 
-# ggplot(Richness, aes(x = Mean_Richness_perSurvey)) +
-#           geom_histogram(binwidth = 1, center = 0, fill = "grey", color = "black") +
-#           scale_x_continuous(breaks = min(Richness$Mean_Richness_perSurvey):max(Richness$Mean_Richness_perSurvey))
-#             # Is right-skewed
-# 
-# # Log10 transformed, using density plot because histogram breaks would look weird in this scale
-# ggdensity(Richness$Mean_Richness_perSurveyLog10,
-#           main = "Density plot of  richness",
-#           xlab = "Species richness (log-transformed)")
-#             # Normally distributed
-# 
-# ggqqplot(Richness$Mean_Richness_perSurveyLog10)
-```
+
 ## Statistical models
 ```{r richness}
-# Model from paper
-modelOG<- lmer(SpeciesRichness ~ Depth.MLLW + Reef.dist_m +  AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) +
-(1 | TransectDate:Observer), data = Richness) 
-# modelpois<- glmer(SpeciesRichness ~ Depth.MLLW + Reef.dist_m +  AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) +
-# (1 | TransectDate:Observer), data = Richness, family = "poisson") 
-model <- glmmTMB(SpeciesRichness ~ Depth.MLLW + Reef.dist_m +  AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) +
-(1 | TransectDate:Observer), data=Richness, family=nbinom2)
+# Three versions of modelling the data: Gaussian, negative binomial and Conway-Maxwell Poisson. All use the same variables
+# Version 1: Gaussian. Leads to non-normal distribution of residuals, and doesn't fit count data well.
+modelG<- lmer(SpeciesRichness ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Richness)
+
+# Version 2: Negative binomial with distances including NA values > distance not significant for AR patches > exclude
+modelNB <- glmmTMB(SpeciesRichness ~ Depth.MLLW + Reef.dist_m +  AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=nbinom2)
+
+# Version 3: Negative binomial. Considering underdispersion (UD) gives 0,78 it is a feasible option.
+modelNB2 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=nbinom2)
+
+# Version 4: Conway-Maxwell Poisson, but without distances modelled.
+modelCMP1 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+
+# Version 5: Conway-Maxwell Poisson, but with dispersion formula
+modelCMP2 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois(), dispformula = ~ Patch.type)
+
+# Version 6: v5, but with both distances and no dispersion formula
+modelCMP3 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + Reefdistance:Treatment +  ARdistance:Treatment + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
 
 # Look at model
-summary(model)
-
-### Post hoc
-emmeans(model, list(pairwise ~ YearGroup), adjust='tukey', type = "response") 
+Anova(modelNB)
 
 ##### Interpretation of results:
 ## There are three non-significant effects: the covariates Reef distance and AR distance, as well as Patch.type
+# Normality, heteroscedasticity with DHARMa
+sim_resNB2 <- simulateResiduals(fittedModel = modelNB2, re.form = NULL)
+sim_resCMP1 <- simulateResiduals(fittedModel = modelCMP1, re.form = NULL)
+sim_resCMP2 <- simulateResiduals(fittedModel = modelCMP2, re.form = NULL)
+sim_resCMP3 <- simulateResiduals(fittedModel = modelCMP3, re.form = NULL)
 
+# plot residuals
+plot(sim_resNB2)
+plot(sim_resCMP1)
+plot(sim_resCMP2)
+plot(sim_resCMP3)
+#testResiduals(sim_res)
+
+# testZeroInflation(sim_res) # <- Not significant
+# testCategorical(sim_resCMP1, catPred = Richness$Depth.MLLW)
+# testCategorical(sim_resCMP1, catPred = Richness$YearGroup)
+# testCategorical(sim_resCMP1, catPred = Richness$Patch.type)
+# testCategorical(sim_resCMP1, catPred = Richness$DietH)
+```
+
+## Plots
+```{r}
 # Testing diagnostics for model 2
 ## Linearity of only continuous variable
-Richness_combined <- Richness %>% 
-  group_by(SurveyNo, Depth.MLLW) %>% 
+Richness_combined <- Richness %>%
+  group_by(SurveyNo, Depth.MLLW) %>%
   summarise (SpeciesRichness = sum(SpeciesRichness))
 
 plot(Richness_combined$Depth.MLLW, Richness_combined$SpeciesRichness, xlab = "Depth", ylab = "Species richness", main = "Species richness vs Depth (covariate)")
@@ -918,281 +904,307 @@ text(x = 7,
                      round(coef_lm[1,1],2)),
      pos = 4)
 
-# simulate residuals
-sim_res <- simulateResiduals(fittedModel = model, n = 1000)
+emm_df <- as.data.frame(emmeans(modelCMP3, ~ YearGroup * DietH, type = "response"))
+emm_totals <- emm_df %>%
+  group_by(YearGroup) %>%
+  summarise(
+    total = sum(response),
+    LCL = sum(asymp.LCL),
+    UCL = sum(asymp.UCL),
+    .groups = "drop")
 
-# plot residuals
-plot(sim_res)
+#Reorder DietH, largest at bottom
+emm_df <- emm_df %>%
+  group_by(YearGroup) %>%
+  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
+  ungroup()
 
-# check for residual patterns by predictor
-# plotResiduals(sim_res, form = ~ DietH)
-
-## Normality
-res <- resid(model)
-qqnorm(res) 
-qqline(res) # Dots are around line, visual inspection says normal distribution
-shapiro.test(res) #p>0.05 thus normal distributed
-
-## Homoscedasticity
-plot(fitted(model), resid(model),
-     xlab = "Fitted values", ylab = "Residuals")
-abline(h = 0, col = "red")
-
-
-
-#lot(ggpredict(model1, "Treatment"))
-#plot(ggpredict(model1, "YearGroup"))
+ggplot(emm_df, aes(x = YearGroup, y = response, fill = DietH)) +
+  geom_bar(stat = "identity", width = 0.7) +  # stacked bars restored
+  geom_errorbar(
+    data = emm_totals,
+    aes(x = YearGroup, ymin = LCL, ymax = UCL),
+    inherit.aes = FALSE,
+    width = 0.25,
+    size = 0.8
+  ) +
+  scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +  # legend restored
+  labs(
+    x = "Yeargroup",
+    y = "Species richness",
+    title = "Predicted species richness per survey"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text = element_text(color = "black"),
+    panel.grid.major = element_line(color = "grey90"),
+    legend.title = element_text(face = "plain")
+  )
 
 ```
-
 # Biomass
 ```{r}
 # ---- DATA PREP ----
-# Remove rows with no abundance, non-herbivorous fish, and non-instantaneous data
-fishBio <- fish[fish$Abundance != 0 & fish$DietH != "Other" & fish$Coloured == 12,]
+# Remove rows with no abundance or non-herbivorous fish
+Biomass <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
+Biomass <- droplevels(Biomass)
 
-#Calculate mean herbivore species abundance per survey
-Biomass <- fishBio %>%
-  #Unique species for each raw survey record
-  group_by(Patch.type, Transect,Depth.MLLW, YearGroup, Date,  Observer) %>%
-  summarise(fishBio = sum(Biomass_kgha)) %>%
-  
-  #Average when a survey is done with two observers
-  group_by(Patch.type, Transect,Depth.MLLW, YearGroup, Date) %>%
-  summarise(biomass_mean_observers = mean(fishBio)) %>% 
+all_combos <- expand_grid(
+  SurveyNo = unique(Biomass$SurveyNo),
+  DietH = unique(Biomass$DietH))
 
-  #Average when a transect is surveyed multiple times in the same year group (21-22/23-24/25)
-  group_by(Patch.type, Transect,Depth.MLLW, YearGroup) %>% 
-  summarise(Mean_Biomass_perSurvey = mean(biomass_mean_observers))
+# Go from abundance to species Biomass, and bringing back 0 values for groups without observations
+## First store metadata
+survey_meta <- Biomass %>%
+  select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
+  distinct()
 
-Biomass$Mean_Biomass_perSurveyLog10 <- log10(Biomass$Mean_Biomass_perSurvey)
-```
-## Plots
-```{r}
-# Calculate standard deviation per group
-Biomass_SD <- Biomass %>%
-   group_by(Patch.type) %>%
-   summarise(
-     Mean_Biomass_perPatch = mean(Mean_Biomass_perSurvey),
-     SD_Biomass_perPatch = sd(Mean_Biomass_perSurvey),
-     .groups = "drop"
-   )
+Biomass <- Biomass %>%
+  group_by(SurveyNo, DietH) %>%
+  summarise(GuildBiomass = sum(Biomass_kgha),
+            .groups = "drop") 
 
-Biomass_combined <- Biomass %>% left_join(Biomass_SD, by = "Patch.type")
-
-# Plot
-ggplot(Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perSurvey)) +
-   geom_point(position = position_jitter(width = 0.2), alpha = 0.6, color="grey") +  # individual points
-   geom_point(data = Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perPatch),
-              color = "black", size = 4, shape = 18) +  # mean points (red diamonds)
-   geom_errorbar(data = Biomass_combined,
-                 aes(x = Patch.type,
-                     ymin = Mean_Biomass_perPatch - SD_Biomass_perPatch,
-                     ymax = Mean_Biomass_perPatch + SD_Biomass_perPatch),
-                 width = 0.1, color = "blue") +  # error bars
-   labs(title = "Herbivore species Biomass",
-        x = "Patch type",
-        y = "Herbivore species Biomass") +
-   ylim(0,200) +
-   theme_minimal()
- 
-# Checking for normality 
-ggdensity(Biomass$Mean_Biomass_perSurvey,
-          main = "Density plot of  Biomass",
-          xlab = "Species Biomass")
-            # Normally distributed
-
-# Log10 transformed, using density plot because histogram breaks would look weird in this scale
-ggdensity(Biomass$Mean_Biomass_perSurveyLog10,
-          main = "Density plot of  Biomass",
-          xlab = "Species Biomass (log-transformed)")
-            # Normally distributed
-
-# Calculate standard deviation per group
-Biomass_SDLog10 <- Biomass %>%
-   group_by(Patch.type) %>%
-   summarise(
-     Mean_Biomass_perPatchLog10 = mean(Mean_Biomass_perSurveyLog10),
-     SD_Biomass_perPatchLog10 = sd(Mean_Biomass_perSurveyLog10),
-     .groups = "drop"
-   )
-
-Biomass_combined <- Biomass %>% left_join(Biomass_SDLog10, by = "Patch.type")
-
-# Plot
-ggplot(Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perSurveyLog10)) +
-   geom_point(position = position_jitter(width = 0.2), alpha = 0.6, color="grey") +  # individual points
-   geom_point(data = Biomass_combined, aes(x = Patch.type, y = Mean_Biomass_perPatchLog10),
-              color = "black", size = 4, shape = 18) +  # mean points (red diamonds)
-   geom_errorbar(data = Biomass_combined,
-                 aes(x = Patch.type,
-                     ymin = Mean_Biomass_perPatchLog10 - SD_Biomass_perPatchLog10,
-                     ymax = Mean_Biomass_perPatchLog10 + SD_Biomass_perPatchLog10),
-                 width = 0.1, color = "blue") +  # error bars
-   labs(title = "Herbivore species Biomass log-transformed",
-        x = "Patch type",
-        y = "Herbivore species Biomass") +
-   theme_minimal()
-
-ggqqplot(Biomass$Mean_Biomass_perSurveyLog10)
+# Bring back the lost metadata 
+Biomass <- Biomass %>%
+  left_join(survey_meta, by = "SurveyNo")
+rm(survey_meta, all_combos)
 ```
 ## Statistical models
 ```{r}
-## Summarize per survey - Biomass
-biosum <- merge(surveys[ ,c(1:6)], bio, by = "SurveyNo", all.x=T)
-biosum <- biosum[,-c(6)]
-biosum <- aggregate(Biomass_ha ~ SurveyNo, biosum, sum) # Get the total biomass per survey
-biosum <- merge(biosum, totsur, all.y=T) # Re-add surveys without observations
-biosum[is.na(biosum)] <- 0
-biosum <- merge(surveys, biosum, by = "SurveyNo", all.x=T)
+# Version 1: Gaussian. Leads to non-normal distribution of residuals.
+BmodelG<- lmer(GuildBiomass ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass) 
 
-## Summarize per survey - Abundance
-abusum <- merge(surveys[ ,c(1:6)], bio, by = "SurveyNo", all.x=T)
-abusum <- aggregate(Abundance ~ SurveyNo, abusum, sum) # Get the total biomass per survey
-abusum <- merge(abusum, totsur, all.y=T) # Re-add surveys without observations
-abusum[is.na(abusum)] <- 0
-abusum <- merge(surveys, abusum, by = "SurveyNo", all.x=T)
+# Version 2: log-transformed, Gaussian
+BmodelOutl<- lmer(log10(1+GuildBiomass) ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass) 
 
-## Aggregate the simultaneous surveys and means for transects per Year
+# Version 3: log-link, first testing if Reef and AR distance without reference/control patches is significant
+BmodelLoglink1 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
 
-biosumsubmeans <- biosum
-biosumsubmeans <- aggregate(Biomass_ha ~ Transect + Date + Year, biosumsubmeans, mean)
+# Version 4: log-link, only taking Reefdistance into account, because it's significant in version 3.
+BmodelLoglink2 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reefdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
 
-## Average per patch
+# Version 5: log-link, taking both distances into account
+BmodelLoglink3 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), dispformula = ~ DietH, data = Biomass, family = tweedie(link="log"))
 
-biosumsubtransmeans <- biosumsubmeans
-biosumsubtransmeans <- aggregate(Biomass_ha ~ Transect + Year, biosumsubtransmeans, mean)
+# Look at model
+Anova(BmodelLoglink1)
+ 
+## Normality
+resmodelG <- resid(BmodelG)
+qqnorm(resmodelG)
+qqline(resmodelG)
 
-# ---- MODELLING ----
-# Log-transformed because of heterogeneity residuals
-biosumsubmeans$Biomass_ha[biosumsubmeans$Biomass_ha == 0] <- min(biosumsubmeans$Biomass_ha[biosumsubmeans$Biomass_ha>0])/2
+# Homoscedasticity
+plot(fitted(BmodelG), resmodelG,
+      xlab = "Fitted values", ylab = "Residuals")
+ abline(h = 0, col = "red")
+ 
+## Normality
+resmodelOutl <- resid(BmodelOutl)
+qqnorm(resmodelOutl)
+qqline(resmodelOutl)
 
-### Model
-lmerBiomeans <- lmer(log10(Biomass_ha) ~ Year + (1|Transect), data = biosumsubmeans)
-car::Anova(lmerBiomeans)
-summary(lmerBiomeans)
+# Homoscedasticity
+plot(fitted(BmodelOutl), resmodelOutl,
+      xlab = "Fitted values", ylab = "Residuals")
+ abline(h = 0, col = "red") 
+ 
+# Normality & homoscedasticity for DHARMa
+Bsim_resLoglink2 <- simulateResiduals(fittedModel = BmodelLoglink2, re.form = NULL)
+Bsim_resLoglink3 <- simulateResiduals(fittedModel = BmodelLoglink3, re.form = NULL)
 
-#### Interpretation of results
-#The linear mixed model analyzing log-transformed biomass per hectare revealed some evidence of temporal variation across years. Biomass in 2023 was significantly lower than the baseline year (p = 0.0115), while 2020 also showed a marginally significant decline (p = 0.0500). Other years did not differ significantly from the baseline. The model included transect as a random effect, which accounted for a small amount of variance (SD = 0.095), indicating slight variation in biomass levels between transects. The residual variation remained moderate (SD = 0.411), suggesting most variation was within transects or not explained by year alone. Overall, these results suggest that biomass was relatively stable in most years, but showed notable declines in 2020 and especially 2023.
+# plot residuals
+plot(Bsim_resLoglink2)
+plot(Bsim_resLoglink3)
+
+testCategorical(Bsim_resLoglink3, catPred = Richness$Depth.MLLW)
+testCategorical(Bsim_resLoglink3, catPred = Richness$YearGroup)
+testCategorical(Bsim_resLoglink3, catPred = Richness$Patch.type)
+testCategorical(Bsim_resLoglink3, catPred = Richness$DietH)
+testResiduals(Bsim_resLoglink3)
 ```
-## Comparison of models
+## Plots
 ```{r}
-### Model validation
-mod <- lmerBiomeans # set model to be validated
-op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
-plot(resid(mod, type = "pearson") ~ fitted(mod)) # fitted vs residuals
-abline(0,0)
-hist(resid(mod, type = "pearson"), main = "") # histogram residuals
-qqnorm(resid(mod, type = "pearson")) # QQplot residuals
-plot(biosumsubmeans$Year, resid(mod, type = "pearson")) # residuals split over Date
-abline(0,0)
-plot(fitted(mod) ~ log10(biosumsubmeans$Biomass_ha)) # response data vs fitted
-par(op)
+#emm_df <- as.data.frame(emmeans(BmodelLoglink3, ~ YearGroup * DietH, type = "response"))
 
-### Post hoc
-emmBiomeans <- emmeans(lmerBiomeans, list(pairwise ~ Year), adjust='tukey', type = "response") 
-emmBiosum <- multcomp::cld(emmBiomeans$emmeans, alpha = 0.05, Letters = letters, reversed = FALSE)
-emmBiosum <- emmBiosum %>% dplyr::mutate(.group = str_squish(.group)) # remove white spaces
+```
 
-# ---- PLOTS ----
+# Mean size
+```{r}
+# ---- DATA PREP ----
+# Remove rows with no abundance (as those would lower mean sizes), or non-herbivorous fish and non-instantaneous observations
+Meansize <- fish[fish$Abundance != 0 & fish$DietH != "Other" & fish$Coloured == 12,]
 
-Bioplot <- ggplot(data = biosumsubtransmeans, aes(x = Year, y = Biomass_ha, colour = Year)) +
-    geom_jitter(width = 0.2, size = 2) +
-    scale_colour_manual(values = co) +
-    scale_x_discrete(expand = c(0, 0.7)) +  # Use actual year values in the data
-    geom_point(data = emmBiosum, aes(y = response), colour = 'black', size = 4) +
-    geom_errorbar(data = emmBiosum, width = 0.1, colour = 'black', size = 0.8,
-                  aes(y = response, ymin = response - SE, ymax = response + SE)) +
-    geom_text(data = emmBiosum, aes(label = .group, y = response + 3.5 * SE), colour = 'black', size = 7) +
-    labs(y = expression(paste("Fish biomass (kg ", ha^-1, ")")), x = "Year") +
-    scale_y_continuous(trans = 'log10', breaks = c(10, 100, 1000)) +
-    coord_cartesian(ylim = c(4, 1001)) +
-    scale_color_manual(values = co) +
-    theme_bw() +
-    theme(axis.title.y = element_text(size = 14, face = "plain", vjust = 2.7),
-          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
-          axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),
-          axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5),
-          legend.position = "none")
+## First store metadata
+survey_meta <- Meansize %>%
+  select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
+  distinct()
 
-print(Bioplot)
+Meansize$Size <- as.numeric(as.character(Meansize$Size))
 
-#ggsave("Fish_Biomass.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
+# Go from size classes to mean size
+Meansize <- Meansize %>%
+  group_by(SurveyNo, DietH) %>%
+  summarise(GuildMeansize = sum(Size * Abundance) / sum(Abundance),
+            .groups = "drop")
+
+# Bring back the lost metadata 
+Meansize <- Meansize %>%
+  left_join(survey_meta, by = "SurveyNo")
+rm(survey_meta)
+```
+## Statistical models
+```{r}
+# Version 1: Gaussian. Leads to non-normal distribution of residuals.
+MSmodelG<- lmer(GuildMeansize ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Meansize) 
+
+# Version 2: Gaussian with log-transformation.
+MSmodelOutl<- lmer(log10(1+GuildMeansize) ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Meansize) 
+
+# Version 3: Log-link, testing if distances are significant
+MSmodelLoglink1 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
+
+# Version 4: Log-link, excluding ARdist as it is insignificant in v3.
+MSmodelLoglink2 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
+
+# Version 5: Log-link, both distances included
+MSmodelLoglink3 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
+
+# Look at model
+Anova(MSmodelLoglink1)
+
+## Normality
+MSresmodelG <- resid(MSmodelG)
+qqnorm(MSresmodelG)
+qqline(MSresmodelG)
+
+# Homoscedasticity
+plot(fitted(MSmodelG), MSresmodelG,
+      xlab = "Fitted values", ylab = "Residuals")
+ abline(h = 0, col = "red")
+ 
+# Normality
+MSresOutl <- resid(MSmodelOutl)
+qqnorm(MSresOutl)
+qqline(MSresOutl)
+
+# Homoscedasticity
+plot(fitted(MSmodelOutl), MSresOutl)
+abline(h = 0, lwd = 2, col = "red")
+ 
+# Normality & homoscedasticity for DHARMa
+MSsim_resLoglink2 <- simulateResiduals(fittedModel = MSmodelLoglink2, re.form = NULL)
+MSsim_resLoglink3 <- simulateResiduals(fittedModel = MSmodelLoglink3, re.form = NULL)
+
+# plot residuals
+plot(MSsim_resLoglink2)
+plot(MSsim_resLoglink3)
+
+#testResiduals(sim_resLoglink2)
+#testResiduals(sim_resLoglink3)
+```
+
+## Plots
+```{r}
+
 ```
 
 # Abundance
-## Plots
 ```{r}
-# ---- MODELLING ----
+# ---- DATA PREP ----
+# Remove rows with non-herbivorous fish, and non-instantaneous observations
+Abundance <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
+Abundance <- droplevels(Abundance)
 
-## ==== Model ====
-### Prep data
-abusumsubmeans <- abusum
-abusumsubmeans$Abundance_m2 <- abusumsubmeans$Abundance / abusumsubmeans$Area 
-abusumsubmeans <- aggregate(Abundance_m2 ~ Transect + Date + Year, abusumsubmeans, mean) # Mean simul surveys
-abusumsubtransmeans <- aggregate(Abundance_m2 ~ Transect + Year, abusumsubmeans, mean) # Mean per Patch
+all_combos <- expand_grid(
+  SurveyNo = unique(Abundance$SurveyNo),
+  DietH = unique(Abundance$DietH))
 
-### Modelling
-#### Log-transformed because of heterogeneity residuals
-abusumsubmeans$Abundance_m2[abusumsubmeans$Abundance_m2 == 0] <- min(abusumsubmeans$Abundance_m2[abusumsubmeans$Abundance_m2>0])/2
+# Go from abundance to species Abundance, and bring back 0 values for groups without observations
+## First store metadata
+survey_meta <- Abundance %>%
+  select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
+  distinct()
 
-### Model
-lmerAbumeans <- lmer(log10(Abundance_m2) ~ Year + (1|Transect), data = abusumsubmeans)
-car::Anova(lmerAbumeans)
+## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
+Abundance <- Abundance %>%
+  group_by(SurveyNo, DietH) %>%
+  summarise(SpeciesAbundance = sum(Abundance),
+            .groups = "drop") %>%
+  right_join(all_combos, by = c("SurveyNo", "DietH")) 
+
+## Bring back metadata lost in group_by
+Abundance <- Abundance %>%
+  left_join(survey_meta, by = "SurveyNo")
+rm(survey_meta, all_combos)
 ```
-
 ## Statistical models
 ```{r}
-```
+# Version 1: Negative binomial to test Reef.dist and AR dist significance among ARs > both significant here!
+AmodelNB1 <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = nbinom2)
 
-## Comparison of models
+# Version 2: Negative binomial. 
+AmodelNB2 <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Abundance, family=nbinom2) 
+
+# Version 3: v2 with dispersion of DietH accounted for
+AmodelNB3 <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = nbinom2, dispformula = ~ DietH)
+
+# Version 4: v3 with zero-inflation accounted for
+AmodelNB4 <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, ziformula = ~ 1, family = nbinom2, dispformula = ~ DietH)
+
+# Version 5: Poisson
+AmodelPoisson <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = poisson, dispformula = ~ DietH)
+
+# Look at model
+Anova(AmodelNB1)
+
+# Normality, heteroscedasticity with DHARMa
+Asim_resNB2 <- simulateResiduals(fittedModel = AmodelNB2, re.form = NULL)
+Asim_resNB3 <- simulateResiduals(fittedModel = AmodelNB3, re.form = NULL)
+Asim_resNB4 <- simulateResiduals(fittedModel = AmodelNB4, re.form = NULL)
+Asim_resPoisson <- simulateResiduals(fittedModel = AmodelPoisson, re.form = NULL)
+
+plot(Asim_resNB2)
+plot(Asim_resNB3)
+plot(Asim_resNB4)
+plot(Asim_resPoisson)
+
+testCategorical(Asim_resNB4, catPred = Abundance$Depth.MLLW)
+testCategorical(Asim_resNB4, catPred = Abundance$YearGroup)
+testCategorical(Asim_resNB4, catPred = Abundance$Patch.type)
+testCategorical(Asim_resNB4, catPred = Abundance$DietH)
+```
+## Plots
 ```{r}
-### Validation
-mod <- lmerAbumeans # set model to be validated
-op <- par(mfrow = c(2, 4), mar = c(5, 4, 1, 2)) # set layout of figure frame
-plot(resid(mod, type = "pearson") ~ fitted(mod)) # fitted vs residuals
-abline(0,0)
-hist(resid(mod, type = "pearson"), main = "") # histogram residuals
-qqnorm(resid(mod, type = "pearson")) # QQplot residuals
-plot(abusumsubmeans$Year, resid(mod, type = "pearson")) # residuals split over Date
-abline(0,0)
-plot(fitted(mod) ~ log10(abusumsubmeans$Abundance_m2)) # response data vs fitted
-par(op)
+# Testing diagnostics for model 1
+## Linearity of only continuous variable
+Abundance_combined <- Abundance %>% 
+  group_by(SurveyNo, Depth.MLLW) %>% 
+  summarise (SpeciesAbundance = sum(SpeciesAbundance))
 
-### Post hoc
-emmAbu <- emmeans(lmerAbumeans, list(pairwise ~ Year), adjust='tukey', type = "response")
-emmAbusum <- multcomp::cld(emmAbu$emmeans, alpha = 0.05, Letters = letters, reversed = FALSE) # get CLD
-emmAbusum <- emmAbusum %>% dplyr::mutate(.group = str_squish(.group)) # remove white spaces
+plot(Abundance_combined$Depth.MLLW, Abundance_combined$SpeciesAbundance, xlab = "Depth", ylab = "Species Abundance", main = "Species Abundance vs Depth (covariate)")
+abline(lm(SpeciesAbundance ~ Depth.MLLW, data = Abundance_combined))
+sum_lm <- summary (lm(SpeciesAbundance ~ Depth.MLLW, data = Abundance_combined))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 150,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
 
-# ---- PLOTS ----
-
-## ==== not adjusted ====
-### Abundance- not adjusted
-Abuplot <- ggplot(data = abusumsubtransmeans, aes(x = Year, colour = Year, y = Abundance_m2)) + 
-    geom_jitter(width = 0.2, size = 2) +
-    geom_point(data = emmAbusum, aes(y = response), colour = 'black', size = 4) +
-    geom_errorbar(data = emmAbusum, width = 0.1, colour = 'black', size = 0.8,
-                  aes(y = response, ymin = response - SE, ymax = response + SE)) +
-    geom_text(data = emmAbusum, 
-              aes(label = .group, y = response + 3.5 * SE), colour = 'black', size = 7) +
-    labs(y = expression(paste("Fish abundance (", m^-2, ")")), x = "Year") +  # Set x-axis title to "Year"
-    scale_y_continuous(trans = 'log10', breaks = c(0.1, 1, 10)) +
-    coord_cartesian(ylim = c(0.05, 11)) +
-    scale_color_manual(values = co) +
-    theme_bw() +
-    theme(axis.title.y = element_text(size = 14, face = "plain", vjust = 2.7),
-          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
-          axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),  # Restore x-axis title formatting
-          axis.text.x = element_text(size = 12, face = "bold", vjust = 0.5),     # Restore x-axis labels
-          legend.position = "none")
-
-
-print(Abuplot)
-
-#ggsave("Fish_Abundance_Years.tiff", width = 23, height = 14, units = "cm", dpi=1200, compression = "lzw")
 ```
 
-### Composition comparisons
+# Composition comparisons
 ```{r biomass composition}
 # Composition comparisons done on Biomass level, because more informative than on Abundance level
 # ---- DATA PREP ----
@@ -1526,17 +1538,180 @@ base::print(doc, target="Fish_BC Table Diet x Treatment.docx")
 
 ```
 
+
+
 # Ordination plots
 ```{r}
+# ---- DATA PREP, similar to Biomass ----
+# Remove rows with non-herbivorous fish, and non-instantaneous observations
+BiomassNMDS <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
 
-# ---- DATA PREP ----
-## Make already a grouping, for Ordination analysis on Diet level
-bioDiet <- spread(bio, key = Diet, value = Biomass_ha) # Make Diet section from long to wide
-bioDiet <- bioDiet[,-c(3:5)] #Remove unnecessary columns
-bioDiet[is.na(bioDiet)] <- 0
-bioDiet <- merge(bioDiet, totsur, all.y=T) # Re-add surveys without observations
-bioDiet[is.na(bioDiet)] <- 0
-bioDiet <- aggregate(. ~ SurveyNo, data = bioDiet, FUN = sum) # Sum each Diet per Survey
+# Go from Biomass to species Biomass, and bring back 0 values for groups without observations
+## First store metadata
+survey_meta <- BiomassNMDS %>%
+  select(SurveyNo, Transect, Depth.MLLW, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
+  distinct()
+
+## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
+BiomassNMDS <- BiomassNMDS %>%
+  group_by(SurveyNo, Species) %>%
+  summarise(Biomass = sum(Biomass_kgha),
+            .groups = "drop")
+
+# Go to wide for Bray-Curtis dissimilarity
+BiomassNMDS <- BiomassNMDS %>% pivot_wider( names_from = Species, values_from = Biomass)
+BiomassNMDS[is.na(BiomassNMDS)] <- 0
+
+# Identify surveys with no herbivorous fish & Remove
+empty_rows <- rowSums(BiomassNMDS[,-1]) == 0
+empty_cols <- colSums(BiomassNMDS[,-1]) == 0
+BiomassNMDS <- BiomassNMDS[ !empty_rows, ]
+BiomassNMDS <- BiomassNMDS[ , c(TRUE, !empty_cols) ]
+
+# Bring back metadata lost in group_by above
+BiomassNMDS <- BiomassNMDS %>% left_join(survey_meta, by = "SurveyNo")
+BiomassNMDS_data <- BiomassNMDS[2:46]
+rm(survey_meta)
+
+# Make NMDS plot
+nmds = metaMDS(BiomassNMDS_data3, distance = "bray")
+data.scores = as.data.frame(scores(nmds)$sites)
+
+#add columns to data frame 
+data.scores$Patch.type = BiomassNMDS$Patch.type
+head(data.scores)
+
+coords <- as.data.frame(nmds$points)
+
+# Get two samples with highest NMDS1 values:
+outliers <- coords[order(coords$MDS1, decreasing = TRUE)[1:2], ]
+outliers
+
+data.scores$SampleID <- rownames(data.scores)
+
+ggplot(data.scores,aes(x = NMDS1, y = NMDS2)) +
+  geom_point(size = 3, aes(colour = Patch.type)) +
+  geom_text(
+  data = subset(data.scores, SampleID %in% c("304", "305")),
+  aes(label = SampleID),
+  hjust = -0.2, fontface = "bold", size = 4) +
+  theme(axis.text = element_text(size = 12, colour = "black"),
+    axis.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14),
+    panel.background = element_blank(),
+    panel.border = element_rect(fill = NA, colour = "black", size = 1.2)) +
+  labs(x = "NMDS1", y = "NMDS2", colour = "Patch.type", fill = "Patch.type") +
+  scale_colour_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733")) +
+  scale_fill_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733"))
+
+
+```
+
+
+# Ordination plots with outlier excluded
+```{r}
+# ---- DATA PREP, similar to Biomass ----
+# Remove rows with non-herbivorous fish, and non-instantaneous observations
+BiomassNMDS <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
+
+# Go from Biomass to species Biomass, and bring back 0 values for groups without observations
+## First store metadata
+survey_meta <- BiomassNMDS %>%
+  select(SurveyNo, Transect, Depth.MLLW, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
+  distinct()
+
+## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
+BiomassNMDS <- BiomassNMDS %>%
+  group_by(SurveyNo, Species) %>%
+  summarise(Biomass = sum(Biomass_kgha),
+            .groups = "drop")
+
+# Go to wide for Bray-Curtis dissimilarity
+BiomassNMDS <- BiomassNMDS %>% pivot_wider( names_from = Species, values_from = Biomass)
+BiomassNMDS[is.na(BiomassNMDS)] <- 0
+
+# Identify surveys with no herbivorous fish & Remove
+empty_rows <- rowSums(BiomassNMDS[,-1]) == 0
+empty_cols <- colSums(BiomassNMDS[,-1]) == 0
+BiomassNMDS <- BiomassNMDS[ !empty_rows, ]
+BiomassNMDS <- BiomassNMDS[ , c(TRUE, !empty_cols) ]
+
+# Bring back metadata lost in group_by above
+BiomassNMDS <- BiomassNMDS %>% left_join(survey_meta, by = "SurveyNo")
+BiomassNMDS_data <- BiomassNMDS[2:46]
+rm(survey_meta)
+
+# BiomassNMDS_data1 <- decostand(BiomassNMDS_data, "log")      # log transform <- isn't improved
+# BiomassNMDS_data2 <- sqrt(BiomassNMDS_data)                  # square root <- isn't improved
+# BiomassNMDS_data3 <- decostand(BiomassNMDS_data, "hellinger") # also no improvement
+
+head(BiomassNMDS_data)
+
+# Make NMDS plot
+nmds = metaMDS(BiomassNMDS_data3, distance = "bray")
+data.scores = as.data.frame(scores(nmds)$sites)
+
+#add columns to data frame 
+data.scores$Patch.type = BiomassNMDS$Patch.type
+head(data.scores)
+
+coords <- as.data.frame(nmds$points)
+
+# Get two samples with highest NMDS1 values:
+outliers <- coords[order(coords$MDS1, decreasing = TRUE)[1:2], ]
+outliers
+
+data.scores$SampleID <- rownames(data.scores)
+
+# Start from full data and null out the 2 outliers only for ellipse grouping
+data_ell <- data.scores
+data_ell$Patch.type[data_ell$SampleID %in% c("304","305")] <- NA  # mask them, don't drop
+
+# Remove any Patch types that now have <2 samples
+valid_groups <- names(which(table(data_ell$Patch.type, useNA = "no") >= 2))
+data_ell$Patch.type[!(data_ell$Patch.type %in% valid_groups)] <- NA  # mask small groups too
+
+# Now run ordiellipse with a full-length grouping vector
+ell <- ordiellipse(
+  nmds,
+  groups = data_ell$Patch.type,
+  kind = "se",
+  conf = 0.99,
+  draw = "none"
+)
+
+# 3. Generate ellipse dataframe from filtered ellipse object
+ellipse_df <- do.call(rbind, lapply(names(ell), function(g) {
+  df <- as.data.frame(
+    veganCovEllipse(ell[[g]]$cov, ell[[g]]$center, sqrt(qchisq(0.99, df = 2)))
+  )
+  colnames(df) <- c("NMDS1", "NMDS2")
+  df$Patch.type <- g
+  df
+}))
+
+ggplot(subset(data.scores, !(SampleID %in% c("304", "305"))), 
+        aes(x = NMDS1, y = NMDS2)) +
+        geom_point(size = 3, aes(colour = Patch.type)) +
+  geom_polygon(data = ellipse_df, aes(x = NMDS1, y = NMDS2, fill = Patch.type),
+               alpha = 0.25, colour = NA) +
+  geom_text(
+  data = subset(data.scores, SampleID %in% c("304", "305")),
+  aes(label = SampleID),
+  hjust = -0.2, fontface = "bold", size = 4
+) +
+ coord_cartesian(xlim = c(-0.2, 0.1), ylim = c(-0.1, 0.1)) +
+  theme(axis.text = element_text(size = 12, colour = "black"),
+    axis.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14),
+    panel.background = element_blank(),
+    panel.border = element_rect(fill = NA, colour = "black", size = 1.2)) +
+  labs(x = "NMDS1", y = "NMDS2", colour = "Patch.type", fill = "Patch.type") +
+  scale_colour_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733")) +
+  scale_fill_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733"))
+
 
 ```
 
