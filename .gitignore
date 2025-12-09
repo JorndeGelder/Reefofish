@@ -50,9 +50,3 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
-
-#Raw survey data 
-Raw data/
-
-#intermediate outputs and plots
-*.xlsx
