@@ -11,9 +11,9 @@ setwd("C:/Users/Jorn de Gelder/Documents/Thesis R")
 
 # Setup
 ```{r setup}
-rm(list=ls()) # Clear workspace
-knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
-options(scipen = 99) # Have all numbers in non-scientific notation
+#rm(list=ls()) # Clear workspace
+#knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
+#options(scipen = 99) # Have all numbers in non-scientific notation
 
 library(readxl) # Join data frames (vlookup)
 library(cowplot) # Combine plots
@@ -41,6 +41,8 @@ library(ggeffects) # for visualization
 library(glmmTMB) #negative binomial
 library(DHARMa) #for checking NB & CMP GLMM
 library(robustlmm)
+library(multcomp) # for CLD
+library(multcompView) # for CLD
 
 ```
 
@@ -829,62 +831,15 @@ Richness <- Richness %>%
 rm(survey_meta, all_combos)
 
 ```
-
-## Statistical models
-```{r richness}
-# Three versions of modelling the data: Gaussian, negative binomial and Conway-Maxwell Poisson. All use the same variables
-# Version 1: Gaussian. Leads to non-normal distribution of residuals, and doesn't fit count data well.
-modelG<- lmer(SpeciesRichness ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Richness)
-
-# Version 2: Negative binomial with distances including NA values > distance not significant for AR patches > exclude
-modelNB <- glmmTMB(SpeciesRichness ~ Depth.MLLW + Reef.dist_m +  AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=nbinom2)
-
-# Version 3: Negative binomial. Considering underdispersion (UD) gives 0,78 it is a feasible option.
-modelNB2 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=nbinom2)
-
-# Version 4: Conway-Maxwell Poisson, but without distances modelled.
-modelCMP1 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
-
-# Version 5: Conway-Maxwell Poisson, but with dispersion formula
-modelCMP2 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois(), dispformula = ~ Patch.type)
-
-# Version 6: v5, but with both distances and no dispersion formula
-modelCMP3 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + Reefdistance:Treatment +  ARdistance:Treatment + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
-
-# Look at model
-Anova(modelNB)
-
-##### Interpretation of results:
-## There are three non-significant effects: the covariates Reef distance and AR distance, as well as Patch.type
-# Normality, heteroscedasticity with DHARMa
-sim_resNB2 <- simulateResiduals(fittedModel = modelNB2, re.form = NULL)
-sim_resCMP1 <- simulateResiduals(fittedModel = modelCMP1, re.form = NULL)
-sim_resCMP2 <- simulateResiduals(fittedModel = modelCMP2, re.form = NULL)
-sim_resCMP3 <- simulateResiduals(fittedModel = modelCMP3, re.form = NULL)
-
-# plot residuals
-plot(sim_resNB2)
-plot(sim_resCMP1)
-plot(sim_resCMP2)
-plot(sim_resCMP3)
-#testResiduals(sim_res)
-
-# testZeroInflation(sim_res) # <- Not significant
-# testCategorical(sim_resCMP1, catPred = Richness$Depth.MLLW)
-# testCategorical(sim_resCMP1, catPred = Richness$YearGroup)
-# testCategorical(sim_resCMP1, catPred = Richness$Patch.type)
-# testCategorical(sim_resCMP1, catPred = Richness$DietH)
-```
-
-## Plots
+## Pre-model plots
 ```{r}
-# Testing diagnostics for model 2
-## Linearity of only continuous variable
+# Add the different guilds together per survey
 Richness_combined <- Richness %>%
-  group_by(SurveyNo, Depth.MLLW) %>%
+  group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
   summarise (SpeciesRichness = sum(SpeciesRichness))
 
-plot(Richness_combined$Depth.MLLW, Richness_combined$SpeciesRichness, xlab = "Depth", ylab = "Species richness", main = "Species richness vs Depth (covariate)")
+# Correlation between reef depth and species richness
+plot(Richness_combined$Depth.MLLW, Richness_combined$SpeciesRichness, xlab = "Depth", ylab = "Species richness", main = "Herbivore species richness vs Depth (covariate)")
 abline(lm(SpeciesRichness ~ Depth.MLLW, data = Richness_combined))
 sum_lm <- summary (lm(SpeciesRichness ~ Depth.MLLW, data = Richness_combined))
 coef_lm <- sum_lm$coefficients
@@ -894,17 +849,111 @@ text(x = 7,
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
                      "\np-value = ",
-                     #Round p.value of slope to 2 decimals
-                     round(coef_lm[2,4],2),
+                     #Round p.value of slope to 3 decimals
+                     round(coef_lm[2,4],3),
                      "\ny = ",
-                     #Round slope coefficient to 2 decimals
-                     round(coef_lm[2,1],1),
+                     #Round slope coefficient to 3 decimals
+                     round(coef_lm[2,1],3),
                      "x + ",
                      #Round intercept coefficient to 2 decimals
                      round(coef_lm[1,1],2)),
      pos = 4)
 
-emm_df <- as.data.frame(emmeans(modelCMP3, ~ YearGroup * DietH, type = "response"))
+# Correlation between distance from natural reef and species richness
+Richness_noREF <- Richness_combined[Richness_combined$Treatment != "Reference",] 
+plot(Richness_noREF$Reef.dist_m, Richness_noREF$SpeciesRichness, xlab = "Reef distance", ylab = "Species richness", main = "Herbivore species richness vs distance from natural reef (covariate)")
+abline(lm(SpeciesRichness ~ Reef.dist_m, data = Richness_noREF))
+sum_lm <- summary (lm(SpeciesRichness ~ Reef.dist_m, data = Richness_noREF))
+coef_lm <- sum_lm$coefficients
+text(x = 23,
+     y = 8,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 3 decimals
+                     round(coef_lm[2,4],3),
+                     "\ny = ",
+                     #Round slope coefficient to 3 decimals
+                     round(coef_lm[2,1],3),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# Correlation between distance from another AR and species richness
+Richness_ARonly <- Richness_combined[Richness_combined$Treatment == "AR",] 
+plot(Richness_ARonly$AR.dist_m, Richness_ARonly$SpeciesRichness, xlab = "AR distance", ylab = "Species richness", main = "Herbivore species richness vs distance from another artifical reef (covariate)")
+abline(lm(SpeciesRichness ~ AR.dist_m, data = Richness_ARonly))
+sum_lm <- summary (lm(SpeciesRichness ~ AR.dist_m, data = Richness_ARonly))
+coef_lm <- sum_lm$coefficients
+text(x = 23,
+     y = 8,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 3 decimals
+                     round(coef_lm[2,4],3),
+                     "\ny = ",
+                     #Round slope coefficient to 3 decimals
+                     round(coef_lm[2,1],3),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# Conclusion: only Depth has a significant and considerable effect as a covariate, omit reef and AR distances here
+
+```
+## Statistical models
+```{r richness}
+# # Version 1: Gaussian. Leads to non-normal distribution of residuals, and doesn't fit count data well.
+# RmodelG<- lmer(SpeciesRichness ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Richness)
+#
+# # Version 2: Negative binomial. Considering underdispersion (UD) gives 0,78 it is a feasible option.
+# RmodelNB <- glmmTMB(SpeciesRichness ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=nbinom2)
+#
+# # Version 3: Conway-Maxwell Poisson, but with dispersion formula
+# RmodelCMP1 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois(), dispformula = ~ Patch.type)
+#
+# # Version 4: v5, but with both distances and no dispersion formula
+# RmodelCMP2 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + Reefdistance:Treatment + ARdistance:Treatment + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+
+# # Version 5: Negative binomial with distances including NA values (to test significance of distance effects)
+# RmodelCMP3 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + Reef.dist_m +  AR.dist_m + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+#
+# # Version 6: v6, but with distances as non-interaction (thus 0's where irrelevant)
+# RmodelCMP4 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + Reefdistance + ARdistance + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+
+# # Version 7: Conway-Maxwell Poisson, but without distances modeled.
+RmodelCMP5 <- glmmTMB(SpeciesRichness ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+
+# # Look at model
+# Anova(modelCMP4excl)
+# summary(modelCMP4excl)$coefficients$cond #<- Coefficients of reef_distance and AR_distance are very small compared to others, omit
+# AIC(modelCMP4, modelCMP4red) #<- Reduced model is same quality, preferred
+
+# # Normality, heteroscedasticity with DHARMa
+Rsim_resCMP5 <- simulateResiduals(fittedModel = RmodelCMP5, re.form = NULL)
+
+# # plot residuals
+plot(Rsim_resCMP5)
+testResiduals(Rsim_resCMP5)
+
+testZeroInflation(Rsim_resCMP5) # <- Not significant
+testCategorical(Rsim_resCMP5, catPred = Richness$Depth.MLLW)
+testCategorical(Rsim_resCMP5, catPred = Richness$YearGroup)
+testCategorical(Rsim_resCMP5, catPred = Richness$Patch.type)
+testCategorical(Rsim_resCMP5, catPred = Richness$DietH)
+```
+
+## Plots
+```{r}
+emm_df <- as.data.frame(emmeans(RmodelCMP5, ~ YearGroup * DietH, type = "response"))
+emm_year <- emmeans(RmodelCMP5, ~ YearGroup)
+cld_year <- cld(emm_year, Letters = letters, adjust = "tukey") # Letters show significance
+
 emm_totals <- emm_df %>%
   group_by(YearGroup) %>%
   summarise(
@@ -912,6 +961,9 @@ emm_totals <- emm_df %>%
     LCL = sum(asymp.LCL),
     UCL = sum(asymp.UCL),
     .groups = "drop")
+
+emm_totals <- emm_totals %>%
+  left_join(cld_year[, c("YearGroup", ".group")], by = "YearGroup")
 
 #Reorder DietH, largest at bottom
 emm_df <- emm_df %>%
@@ -926,7 +978,12 @@ ggplot(emm_df, aes(x = YearGroup, y = response, fill = DietH)) +
     aes(x = YearGroup, ymin = LCL, ymax = UCL),
     inherit.aes = FALSE,
     width = 0.25,
-    size = 0.8
+    linewidth = 0.8
+  ) +
+  geom_text(
+    data = emm_totals,
+    aes(x = YearGroup, y = UCL + 0.05*max(UCL), label = .group),
+    inherit.aes = FALSE
   ) +
   scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +  # legend restored
   labs(
@@ -969,6 +1026,74 @@ Biomass <- Biomass %>%
   left_join(survey_meta, by = "SurveyNo")
 rm(survey_meta, all_combos)
 ```
+## Pre-model plots
+```{r}
+# Correlation between reef depth and biomass
+plot(Biomass$Depth.MLLW, Biomass$GuildBiomass, xlab = "Depth", ylab = "Biomass", main = "Biomass vs Depth (covariate)")
+abline(lm(GuildBiomass ~ Depth.MLLW, data = Biomass))
+sum_lm <- summary (lm(GuildBiomass ~ Depth.MLLW, data = Biomass))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 10,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# Correlation between distance from natural reef and species Biomass
+Biomass_noREF <- Biomass[Biomass$Treatment != "Reference",] 
+plot(Biomass_noREF$Reef.dist_m, Biomass_noREF$GuildBiomass, xlab = "Reef distance", ylab = "Biomass (kg/ha)", main = "Biomass vs distance from natural reef (covariate)")
+abline(lm(GuildBiomass ~ Reef.dist_m, data = Biomass_noREF))
+sum_lm <- summary (lm(GuildBiomass ~ Reef.dist_m, data = Biomass_noREF))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 10,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# Correlation between distance from another AR and species Biomass
+Biomass_ARonly <- Biomass[Biomass$Treatment == "AR",] 
+plot(Biomass_ARonly$AR.dist_m, Biomass_ARonly$GuildBiomass, xlab = "AR distance", ylab = "Biomass (kg/ha)", main = "Biomass vs distance from another artifical reef (covariate)")
+abline(lm(GuildBiomass ~ AR.dist_m, data = Biomass_ARonly))
+sum_lm <- summary (lm(GuildBiomass ~ AR.dist_m, data = Biomass_ARonly))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 10,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+```
+
 ## Statistical models
 ```{r}
 # Version 1: Gaussian. Leads to non-normal distribution of residuals.
@@ -985,6 +1110,9 @@ BmodelLoglink2 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reefdistance:Treatment + Y
 
 # Version 5: log-link, taking both distances into account
 BmodelLoglink3 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), dispformula = ~ DietH, data = Biomass, family = tweedie(link="log"))
+
+# Version 6: v5, but with distances without Treatment & no disp
+BmodelLoglink4 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reefdistance +  ARdistance + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
 
 # Look at model
 Anova(BmodelLoglink1)
@@ -1012,20 +1140,298 @@ plot(fitted(BmodelOutl), resmodelOutl,
 # Normality & homoscedasticity for DHARMa
 Bsim_resLoglink2 <- simulateResiduals(fittedModel = BmodelLoglink2, re.form = NULL)
 Bsim_resLoglink3 <- simulateResiduals(fittedModel = BmodelLoglink3, re.form = NULL)
+Bsim_resLoglink4 <- simulateResiduals(fittedModel = BmodelLoglink4, re.form = NULL)
 
 # plot residuals
 plot(Bsim_resLoglink2)
 plot(Bsim_resLoglink3)
+plot(Bsim_resLoglink4)
 
-testCategorical(Bsim_resLoglink3, catPred = Richness$Depth.MLLW)
-testCategorical(Bsim_resLoglink3, catPred = Richness$YearGroup)
-testCategorical(Bsim_resLoglink3, catPred = Richness$Patch.type)
-testCategorical(Bsim_resLoglink3, catPred = Richness$DietH)
+testCategorical(Bsim_resLoglink3, catPred = Biomass$Depth.MLLW)
+testCategorical(Bsim_resLoglink3, catPred = Biomass$YearGroup)
+testCategorical(Bsim_resLoglink3, catPred = Biomass$Patch.type)
+testCategorical(Bsim_resLoglink3, catPred = Biomass$DietH)
 testResiduals(Bsim_resLoglink3)
 ```
 ## Plots
 ```{r}
-#emm_df <- as.data.frame(emmeans(BmodelLoglink3, ~ YearGroup * DietH, type = "response"))
+# Plot per Yeargroup, patch.type summed
+emm_df <- as.data.frame(emmeans(BmodelLoglink4, ~ YearGroup * DietH, type = "response"))
+emm_year <- emmeans(BmodelLoglink4, ~ YearGroup)
+cld_year <- cld(emm_year, Letters = letters, adjust = "tukey") 
+
+emm_totals <- emm_df %>%
+  group_by(YearGroup) %>%
+  summarise(
+    total = sum(response),
+    SE_total = sqrt(sum(SE^2)),   # approximate SE of the sum
+    .groups = "drop"
+  ) %>%
+  mutate(
+    LCL = total - 1.96 * SE_total,
+    UCL = total + 1.96 * SE_total
+  )
+
+emm_totals <- emm_totals %>%
+  left_join(cld_year[, c("YearGroup", ".group")], by = "YearGroup")
+
+## Reorder DietH, largest at bottom
+emm_df <- emm_df %>%
+  group_by(YearGroup) %>%
+  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
+  ungroup()
+
+ggplot(emm_df, aes(x = YearGroup, y = response, fill = DietH)) +
+  geom_bar(stat = "identity", width = 0.7) +  # stacked bars restored
+  geom_errorbar(
+    data = emm_totals,
+    aes(x = YearGroup, ymin = LCL, ymax = UCL),
+    inherit.aes = FALSE,
+    width = 0.25,
+    linewidth = 0.8
+  ) +
+    geom_text(
+    data = emm_totals,
+    aes(x = YearGroup, y = UCL + 0.05*max(UCL), label = .group),
+    inherit.aes = FALSE
+  ) +
+  scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +  # legend restored
+  labs(
+    x = "Yeargroup",
+    y = "Biomass (kg/ha)",
+    title = "Predicted biomass per survey"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text = element_text(color = "black"),
+    panel.grid.major = element_line(color = "grey90"),
+    legend.title = element_text(face = "plain")
+  )
+
+# Plotted per patch type
+emm_df <- as.data.frame(emmeans(BmodelLoglink4, ~ YearGroup * DietH * Patch.type, type = "response"))
+cld_total <- cld(emmeans(BmodelLoglink4, ~ YearGroup | Patch.type, type="response"), Letters=letters)
+
+emm_totals <- emm_df %>%
+  group_by(YearGroup, Patch.type) %>%
+  summarise(
+    total = sum(response),          # sum of predicted means
+    SE_total = sqrt(sum(SE^2)),     # approximate SE of the sum
+    .groups = "drop"
+  ) %>%
+  mutate(
+    LCL = total - 1.96*SE_total,
+    UCL = total + 1.96*SE_total
+  )
+
+emm_totals <- emm_totals %>%
+  left_join(cld_total %>% select(YearGroup, Patch.type, .group), by=c("YearGroup","Patch.type"))
+
+emm_df <- emm_df %>%
+  group_by(YearGroup, Patch.type) %>%
+  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
+  ungroup()
+
+ggplot(emm_df, aes(x = YearGroup, y = response, fill = DietH)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  geom_errorbar(
+    data = emm_totals,
+    aes(x = YearGroup, ymin = LCL, ymax = UCL, group = Patch.type),
+    inherit.aes = FALSE,
+    width = 0.25,
+    size = 0.8
+  ) +
+  geom_text(
+    data = emm_totals,
+    aes(x = YearGroup, y = UCL + 0.10*max(UCL), label = .group),
+    inherit.aes = FALSE
+  ) +
+  facet_wrap(~ Patch.type, ncol = 3) +
+  scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +
+  labs(
+    x = "YearGroup",
+    y = "Biomass (kg/ha)",
+    title = "Predicted biomass per survey"
+  ) +
+  theme_minimal(base_size = 12)
+
+# Plotted  per patch type and per herbivore guild
+# Guild-level predictions
+emm_df <- as.data.frame(emmeans(BmodelLoglink4, ~ YearGroup * DietH * Patch.type, type = "response"))
+emm_letters <- emmeans(BmodelLoglink4, ~ YearGroup | DietH + Patch.type)
+cld_letters <- cld(emm_letters, Letters = letters, adjust = "tukey") %>%
+  select(DietH, Patch.type, YearGroup, .group)
+
+# Compute totals per stack and approximate SE
+emm_totals2 <- emm_df %>%
+  group_by(DietH, Patch.type, YearGroup) %>%
+  summarise(
+    total = sum(response),                # sum of predicted means per stack
+    SE_total = sqrt(sum(SE^2)),           # approximate SE
+    .groups = "drop"
+  ) %>%
+  mutate(
+    LCL = total - 1.96*SE_total,
+    UCL = total + 1.96*SE_total
+  )
+
+emm_totals2 <- emm_totals2 %>%
+  left_join(cld_letters, by = c("DietH", "Patch.type", "YearGroup"))
+
+ggplot(emm_totals2, aes(x = YearGroup, y = total)) +
+  geom_bar(stat = "identity", width = 0.7, fill = "steelblue") +
+  geom_errorbar(
+    aes(ymin = LCL, ymax = UCL),
+    width = 0.25,
+    size = 0.8
+  ) +
+  geom_text(
+    aes(y = UCL + 0.5, label = .group),  # small offset above error bar
+    vjust = 0 
+  ) +
+  facet_grid(DietH ~ Patch.type) +
+  labs(
+    x = "YearGroup",
+    y = "Biomass (kg/ha)",
+    title = "Predicted biomass per survey"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 10)
+  )
+
+
+# Comparing guilds across patch types
+emm_guild_patch <- emm_df %>%
+  group_by(DietH, Patch.type) %>%
+  summarise(
+    total = sum(response),
+    SE_total = sqrt(sum(SE^2)),   # approximate SE for sum
+    .groups = "drop"
+  ) %>%
+  mutate(
+    LCL = total - 1.96 * SE_total,
+    UCL = total + 1.96 * SE_total
+  )
+
+ggplot(emm_guild_patch, aes(x = Patch.type, y = total, fill = Patch.type)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  geom_errorbar(aes(ymin = LCL, ymax = UCL), width = 0.2, size = 0.8) +
+  facet_wrap(~ DietH, ncol = 1) +   # one row per guild
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    x = "Patch type",
+    y = "Biomass (kg/ha)",
+    title = "Predicted biomass per survey"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"   # optional: remove legend since Patch.type is on x-axis
+  )
+
+emm_guild_patch <- emm_df %>%
+  group_by(DietH, Patch.type) %>%
+  summarise(
+    total = sum(response),
+    SE_total = sqrt(sum(SE^2)),   # approximate SE for sum
+    .groups = "drop"
+  ) %>%
+  mutate(
+    LCL = total - 1.96 * SE_total,
+    UCL = total + 1.96 * SE_total
+  )
+
+# Single grouped bar plot
+emm_guild_patch <- emm_df %>%
+  group_by(DietH, Patch.type) %>%
+  summarise(
+    total = sum(response),
+    SE_total = sqrt(sum(SE^2)),   # approximate SE for sum
+    .groups = "drop"
+  ) %>%
+  mutate(
+    LCL = total - 1.96 * SE_total,
+    UCL = total + 1.96 * SE_total
+  )
+
+emm_letters <- emmeans(BmodelLoglink4, ~ Patch.type | DietH, type="response")
+cld_letters <- cld(emm_letters, Letters = letters, adjust = "tukey") %>%
+  select(DietH, Patch.type, .group)
+
+emm_guild_patch <- emm_guild_patch %>%
+  left_join(cld_letters, by = c("DietH", "Patch.type"))
+
+ggplot(emm_guild_patch, aes(x = DietH, y = total, fill = Patch.type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  geom_errorbar(
+    aes(ymin = LCL, ymax = UCL),
+    position = position_dodge(width = 0.8),
+    width = 0.25,
+    size = 0.8
+  ) +
+  geom_text(
+    aes(y = UCL + 0.05*max(UCL), label = .group),
+    position = position_dodge(width = 0.8),
+    vjust = 0
+  ) +
+  scale_fill_brewer(palette = "Set2", name = "Patch type") +
+  labs(
+    x = "Herbivore guild",
+    y = "Biomass (kg/ha)",
+    title = "Predicted biomass per survey"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+# Three bar plots 
+emm_guild_patch_year <- emm_df %>%
+  group_by(YearGroup, DietH, Patch.type) %>%
+  summarise(
+    total = sum(response),
+    SE_total = sqrt(sum(SE^2)),  # approximate SE for sum
+    .groups = "drop"
+  ) %>%
+  mutate(
+    LCL = total - 1.96 * SE_total,
+    UCL = total + 1.96 * SE_total)
+
+emm_letters <- emmeans(BmodelLoglink4, ~ Patch.type | DietH + YearGroup, type="response")
+cld_letters <- cld(emm_letters, Letters = letters, adjust = "tukey") %>%
+  select(YearGroup, DietH, Patch.type, .group)
+
+emm_guild_patch_year <- emm_guild_patch_year %>%
+  left_join(cld_letters, by = c("YearGroup", "DietH", "Patch.type"))
+
+ggplot(emm_guild_patch_year, aes(x = DietH, y = total, fill = Patch.type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  geom_errorbar(
+    aes(ymin = LCL, ymax = UCL),
+    position = position_dodge(width = 0.8),
+    width = 0.25,
+    size = 0.8
+  ) +
+  geom_text(
+    aes(y = UCL + 0.05*max(UCL), label = .group),
+    position = position_dodge(width = 0.8),
+    vjust = 0
+  ) +
+  scale_fill_brewer(palette = "Set2", name = "Patch type") +
+  labs(
+    x = "Herbivore guild",
+    y = "Biomass (kg/ha)",
+    title = "Predicted biomass per survey"
+  ) +
+  facet_wrap(~ YearGroup, ncol = 1) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
 
 ```
 
@@ -1053,6 +1459,73 @@ Meansize <- Meansize %>%
   left_join(survey_meta, by = "SurveyNo")
 rm(survey_meta)
 ```
+## Pre-model plots
+```{r}
+# Correlation between reef depth and mean size
+plot(Meansize$Depth.MLLW, Meansize$GuildMeansize, xlab = "Depth", ylab = "Mean size (cm)", main = "Mean size vs Depth (covariate)")
+abline(lm(GuildMeansize ~ Depth.MLLW, data = Meansize))
+sum_lm <- summary (lm(GuildMeansize ~ Depth.MLLW, data = Meansize))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 10,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# Correlation between distance from natural reef and mean fish size
+Meansize_noREF <- Meansize[Meansize$Treatment != "Reference",] 
+plot(Meansize_noREF$Reef.dist_m, Meansize_noREF$GuildMeansize, xlab = "Reef distance", ylab = "Mean size (cm)", main = "Mean herbivore fish size vs distance from natural reef (covariate)")
+abline(lm(GuildMeansize ~ Reef.dist_m, data = Meansize_noREF))
+sum_lm <- summary (lm(GuildMeansize ~ Reef.dist_m, data = Meansize_noREF))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 10,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# Correlation between distance from another AR and mean fish size
+Meansize_ARonly <- Meansize[Meansize$Treatment == "AR",] 
+plot(Meansize_ARonly$AR.dist_m, Meansize_ARonly$GuildMeansize, xlab = "AR distance", ylab = "Mean size (cm)", main = "Mean herbivore fish size vs distance from another artifical reef (covariate)")
+abline(lm(GuildMeansize ~ AR.dist_m, data = Meansize_ARonly))
+sum_lm <- summary (lm(GuildMeansize ~ AR.dist_m, data = Meansize_ARonly))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 10,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+```
 ## Statistical models
 ```{r}
 # Version 1: Gaussian. Leads to non-normal distribution of residuals.
@@ -1069,6 +1542,9 @@ MSmodelLoglink2 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance:Treatment +
 
 # Version 5: Log-link, both distances included
 MSmodelLoglink3 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
+
+# Version 6: Log-link, both distances included as non-interaction
+MSmodelLoglink4 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance +  ARdistance + YearGroup * Patch.type + DietH + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
 
 # Look at model
 Anova(MSmodelLoglink1)
@@ -1095,13 +1571,16 @@ abline(h = 0, lwd = 2, col = "red")
 # Normality & homoscedasticity for DHARMa
 MSsim_resLoglink2 <- simulateResiduals(fittedModel = MSmodelLoglink2, re.form = NULL)
 MSsim_resLoglink3 <- simulateResiduals(fittedModel = MSmodelLoglink3, re.form = NULL)
+MSsim_resLoglink4 <- simulateResiduals(fittedModel = MSmodelLoglink4, re.form = NULL)
 
 # plot residuals
 plot(MSsim_resLoglink2)
 plot(MSsim_resLoglink3)
+plot(MSsim_resLoglink4)
 
-#testResiduals(sim_resLoglink2)
-#testResiduals(sim_resLoglink3)
+testResiduals(MSsim_resLoglink2)
+testResiduals(MSsim_resLoglink3)
+testResiduals(MSsim_resLoglink4)
 ```
 
 ## Plots
@@ -1152,7 +1631,10 @@ AmodelNB3 <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reefdistance:Treatment +  A
 # Version 4: v3 with zero-inflation accounted for
 AmodelNB4 <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, ziformula = ~ 1, family = nbinom2, dispformula = ~ DietH)
 
-# Version 5: Poisson
+# Version 5: v3 with distances as non-interaction
+AmodelNB5 <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reefdistance +  ARdistance + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = nbinom2, dispformula = ~ DietH)
+
+# Version 6: Poisson
 AmodelPoisson <- glmmTMB(SpeciesAbundance ~ Depth.MLLW + Reefdistance:Treatment +  ARdistance:Treatment + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = poisson, dispformula = ~ DietH)
 
 # Look at model
@@ -1162,17 +1644,19 @@ Anova(AmodelNB1)
 Asim_resNB2 <- simulateResiduals(fittedModel = AmodelNB2, re.form = NULL)
 Asim_resNB3 <- simulateResiduals(fittedModel = AmodelNB3, re.form = NULL)
 Asim_resNB4 <- simulateResiduals(fittedModel = AmodelNB4, re.form = NULL)
+Asim_resNB5 <- simulateResiduals(fittedModel = AmodelNB5, re.form = NULL)
 Asim_resPoisson <- simulateResiduals(fittedModel = AmodelPoisson, re.form = NULL)
 
 plot(Asim_resNB2)
 plot(Asim_resNB3)
 plot(Asim_resNB4)
+plot(Asim_resNB5)
 plot(Asim_resPoisson)
 
-testCategorical(Asim_resNB4, catPred = Abundance$Depth.MLLW)
-testCategorical(Asim_resNB4, catPred = Abundance$YearGroup)
-testCategorical(Asim_resNB4, catPred = Abundance$Patch.type)
-testCategorical(Asim_resNB4, catPred = Abundance$DietH)
+testCategorical(Asim_resNB5, catPred = Abundance$Depth.MLLW)
+testCategorical(Asim_resNB5, catPred = Abundance$YearGroup)
+testCategorical(Asim_resNB5, catPred = Abundance$Patch.type)
+testCategorical(Asim_resNB5, catPred = Abundance$DietH)
 ```
 ## Plots
 ```{r}
@@ -1210,277 +1694,277 @@ text(x = 7,
 # ---- DATA PREP ----
 ## ==== Species ====
 ### Create data frame
-bio.ord <- spread(bio, key = Species, value = Biomass_ha) # Wide to long
-bio.ord <- select(bio.ord, -c(2:5))
-bio.ord[is.na(bio.ord)] <- 0
-bio.ord <- aggregate(. ~ SurveyNo, data = bio.ord, FUN = sum, na.action = na.omit) # Sum each Species per Survey
-
-### Add info and re-add surveys without observations
-bio.ord <- left_join(surveys, bio.ord, by = "SurveyNo")
-bio.ord <- select(bio.ord, -c(3,5,6))
-
-### Data selection
-bio.ord[is.na(bio.ord)] <- 0 # Set all Species to 0 for surveys without observations
-
-## Create replicate
-bio.ord.years <- bio.ord 
-
-### average over replicate surveys
-bio.ord <- aggregate(.~Transect+Year, bio.ord, mean)
-bio.ord.years <- aggregate(.~Transect+Year, bio.ord.years, mean)
-
-## ==== Diet ====
-### Create data frame
-bioDiet <- bioDiet %>% select(-Year)
-bioBrayDiet <- merge(surveys[, c(1:5, 7)], bioDiet, all.x = TRUE)
-bioBrayDiet <- bioBrayDiet %>% select(-14)
-
-bioBrayDiet$Transect <- as.factor(bioBrayDiet$Transect)
-bioBrayDiet$Year <- as.factor(bioBrayDiet$Year)
-
-bioBrayDiet <- bioBrayDiet %>% select(-c(1:3, 5))
-
-
-### Average over replicate surveys
-subbcDiet.bio <- aggregate(.~Transect+Year, bioBrayDiet, mean)
-
-# ---- STATS ----
-
-## ==== Species ====
-#### Create a Bray-Curtis mean distance table 
-BCtable.Bio.Specs <- vegdist(bio.ord[,6:ncol(bio.ord)], "bray")
-BCtable.Bio.Specs.tab <- as.data.frame(meandist(BCtable.Bio.Specs, bio.ord$Year, cluster=average))
-
-#### Stats
-adonis.Bio.Specs <- adonis2(formula = BCtable.Bio.Specs ~ Year, data = bio.ord, permutations = 9999)
-pairadonis.Bio.Specs <- pairwise.adonis(BCtable.Bio.Specs, bio.ord$Year, p.adjust='bonferroni', perm = 37000)
-
-#### NMDS
-NMDS.Bio.Spec <- metaMDS(bio.ord[,6:ncol(bio.ord)], distance = "bray", k = 2, trymax=3000, autotransform = FALSE) 
-
-### #### Years #### Replicate
-BCtable.Bio.Specs.years <- vegdist(bio.ord.years[,6:ncol(bio.ord.years)], "bray")
-
-#### Stats
-adonis.Bio.Specs.years <- adonis2(formula = BCtable.Bio.Specs.years ~ Year,
-                                  data = bio.ord.years, permutations = 9999)
-pairadonis.Bio.Specs.years <- pairwise.adonis(BCtable.Bio.Specs.years, bio.ord.years$Year,
-                                              p.adjust='bonferroni', perm = 37000)
-
-#### NMDS
-NMDS.Bio.Spec.years <- metaMDS(bio.ord.years[,6:ncol(bio.ord.years)],
-                               distance = "bray", k = 2, trymax=3000, autotransform = FALSE) 
-
-## ==== Diet ==== #### 
-### Create a bc mean distance table 
-BCtable.Bio.Diet <- vegdist(subbcDiet.bio[,3:ncol(subbcDiet.bio)], "bray")
-BCtable.Bio.Diet.tab <- as.data.frame(meandist(BCtable.Bio.Diet, subbcDiet.bio$Year, cluster=average))
-
-### Stats
-adonis.Bio.Diet <- adonis2(formula = BCtable.Bio.Diet ~ Year, data = subbcDiet.bio, permutations = 9999)
-pairadonis.Bio.Diet <- pairwise.adonis(BCtable.Bio.Diet, subbcDiet.bio$Year, p.adjust = 'bonferroni', perm = 37000)
-
-### NMDS
-NMDS.Bio.Diet <- metaMDS(subbcDiet.bio[,3:ncol(subbcDiet.bio)], distance = "bray", k = 2, trymax=1000, autotransform = FALSE) 
-
-## ==== Years (Based on Abundance rather than Biomass) ====
-### Create a bc mean distance table 
-
-Specs.sum.min <- Specs
-BCtable.Abu.Years <- vegdist(Specs.sum.min[,3:ncol(Specs.sum.min)], "bray")
-BCtable.Abu.Years.tab <- as.data.frame(meandist(BCtable.Abu.Years, Specs.sum.min$Year, cluster=average))
-
-### Stats
-adonis.Abu.Years <- adonis2(formula = BCtable.Abu.Years ~ Year, data = Specs.sum.min, permutations = 9999)
-pairadonis.Abu.Years <- pairwise.adonis(BCtable.Abu.Years, Specs.sum.min$Year, p.adjust = 'bonferroni', perm = 37000)
-
-### NMDS
-NMDS.Abu.Years <- metaMDS(Specs.sum.min[,3:ncol(Specs.sum.min)], distance = "bray", k = 2, trymax=1000, autotransform = FALSE)
-
-
-# ---- PLOTS ----
-
-## ==== Species ==== ### 
-##### On Year level
-NMDS.Bio.Spec.Year <- as.data.frame(scores(NMDS.Bio.Spec, display="site"))
-NMDS.Bio.Spec.Year$Treatment <- subbcDiet.bio$Year
-NMDS.Bio.Spec.Year$Interaction <- subbcDiet.bio$Interaction
-
-Ordi.Sp.Patch <- ggplot(data = NMDS.Bio.Spec.Year)+
-    stat_ellipse(geom = "polygon", alpha = 0.1, aes(x = NMDS1, y = NMDS2, fill = Treatment),
-                level = 0.5, size = 12)+
-    scale_fill_manual(values=co)+
-    geom_point(aes(x = NMDS1,y = NMDS2, colour = Treatment), size= 2)+
-    scale_color_manual(values=co)+
-    scale_y_continuous(limits = c(-2, 2), breaks = c(-2, 0, 2))+
-    theme_bw()+
-    theme(legend.position = "none",
-          legend.text = element_text(size = 12),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          axis.title.y = element_text(size = 14, face = "plain", vjust = 3),
-          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
-          axis.title.x = element_blank(),
-          axis.text.x = element_blank(),
-          plot.margin = margin(0, 0, 0.2, 0.5, "cm"),
-          axis.ticks.length.x = unit(0, "cm"))
-#ggsave("Fish_Ordination species_Patch_Biomass.tiff", width = 18, height = 14, units = "cm", dpi=1200, compression = "lzw")
-
-#### On Species level
-##### Adjust font size based on % of surveys in which a species is seen
-specsizes.bio <- bio.ord[,6:ncol(bio.ord)]
-specsizes.bio <- colSums(specsizes.bio)
-specsizes.bio.min <- min(specsizes.bio)
-specsizes.bio.max <- max(specsizes.bio)
-cex.bio.min <- 0.05
-cex.bio.max <- 2
-specsizes.bio <- ((specsizes.bio - specsizes.bio.min)/(specsizes.bio.max-specsizes.bio.min)) * (cex.bio.max - cex.bio.min) + cex.bio.min
-
-##### Plot on Species level
-##### For composite
-cox <- c(co, "#0673B0", "#0673B0", "#0673B0") 
-
-pdf(NULL)
-dev.control(displaylist="enable")
-par(bg = 'white',   las=1, tck=-0.007, cex.axis=1.1, cex.lab = 1.1, font.axis = 2, mar=c(6.5, 4.2, 0.1, 0.2), 
-    col.axis = "#464646")
-ordiplot(NMDS.Bio.Spec, type="none",  cex = 0.3, ylim = c(-1.1, 1.1), xlim = c(-0.1, 0.9))
-ordiellipse(NMDS.Bio.Spec, groups = bio.ord$Year, kind = "se", conf = 0.99, draw  ="polygon", 
-            col = cox, alpha = 50, label = F, lty = 'blank', border = "white")
-ordipointlabel(NMDS.Bio.Spec, display = "species", scaling = "symmetric", add = TRUE,
-               cex = specsizes.bio, font = 3)
-Ordi.Sp.Sp <- recordPlot()
-invisible(dev.off())
-#Ordi.Sp.Sp <- plot_grid(Ordi.Sp.Sp) + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
-
-#png("Ordi_Sp_Sp.png", width = 1200, height = 1000, res = 150)
-replayPlot(Ordi.Sp.Sp)
-dev.off()
-
-tiff("Ordi_Sp_Sp.tiff", width = 8, height = 6.5, units = "in", res = 300, compression = "lzw")
-replayPlot(Ordi.Sp.Sp)
-dev.off()
-
-#### Years ####
-##### Adjust font size based on % of surveys in which a species is seen
-specsizes.bio.years <- bio.ord.years[,6:ncol(bio.ord.years)]
-specsizes.bio.years <- colSums(specsizes.bio.years)
-specsizes.bio.years.min <- min(specsizes.bio.years)
-specsizes.bio.years.max <- max(specsizes.bio.years)
-cex.bio.years.min <- 0.03
-cex.bio.years.max <- 2
-specsizes.bio.years <- ((specsizes.bio.years - specsizes.bio.years.min)/(specsizes.bio.years.max-specsizes.bio.years.min)) * (cex.bio.years.max - cex.bio.years.min) + cex.bio.years.min
-
-##### Plot on Species*Year level # everything looks too crowded. Solution: get the first 3 letters of every species
-tiff("Fish_Ordination_species_Species_Years_Biomass.tiff",
-     width = 18, height = 14, units = "cm", res = 300, compression = "lzw")
-
-Ordi.Sp.Sp.years <- ordiplot(NMDS.Bio.Spec.years, type="none",
-                             cex = 0.3, ylim = c(-0.3, 0.2), xlim = c(-1.8, 2.1))
-ordiellipse(NMDS.Bio.Spec.years, groups = bio.ord.years$Year, kind = "se", conf = 0.99, draw  ="polygon", 
-            col = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733"), alpha = 50, label = T, lty = 'blank', border = "white")
-ordipointlabel(NMDS.Bio.Spec.years, display = "species", scaling = 9, add = TRUE, cex = specsizes.bio.years)
-dev.off()
-
-#### Based on Abundance
-##### Adjust font size based on % of surveys in which a species is seen
-specsizes.abu.years <- Specs.sum.min[,3:ncol(Specs.sum.min)]
-specsizes.abu.years <- colSums(specsizes.abu.years)
-Specs.sum.min.min <- min(specsizes.abu.years)
-Specs.sum.min.max <- max(specsizes.abu.years)
-cex.abu.years.min <- 0.03
-cex.abu.years.max <- 2
-specsizes.abu.years <- ((specsizes.abu.years - cex.abu.years.min)/(Specs.sum.min.max-Specs.sum.min.min)) * (cex.abu.years.max - cex.abu.years.min) + cex.abu.years.min
-
-##### Plot on Species*Study level
-tiff("Fish_Ordination species_Species_Years_Abundance.tiff", width = 18, height = 14, units = "cm", res = 1500, compression = "lzw")
-Ordi.Sp.Sp.years.abu <- ordiplot(NMDS.Abu.Years, type="none",
-                             cex = 0.3, ylim = c(-0.3, 0.2), xlim = c(-1.8, 2.1))
-ordiellipse(NMDS.Abu.Years, groups = Specs.sum.min$Year, kind = "se", conf = 0.99, draw  ="polygon", 
-            col = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733"), alpha = 50, label = T, lty = 'blank', border = "white")
-ordipointlabel(NMDS.Abu.Years, display = "species", scaling = 9, add = TRUE, cex = specsizes.abu.years)
-dev.off()
-
-## ==== Diet ====
-### On Patch level
-NMDS.Bio.Diet.Patch <- as.data.frame(scores(NMDS.Bio.Diet, display="site"))
-NMDS.Bio.Diet.Patch$Treatment <- ifelse(subbcDiet.bio$Year == 2018, "2018",
-                                 ifelse(subbcDiet.bio$Year == 2019, "2019",       
-                                 ifelse(subbcDiet.bio$Year == 2020, "2020",       
-                                 ifelse(subbcDiet.bio$Year == 2021, "2021",       
-                                 ifelse(subbcDiet.bio$Year == 2022, "2022",      
-                                 ifelse(subbcDiet.bio$Year == 2023, "2023",
-                                 ifelse(subbcDiet.bio$Year == 2024, "2024", "Other")))))))
-
-
-Ordi.Diet.Patch <- ggplot(data = NMDS.Bio.Diet.Patch)+
-    stat_ellipse(geom = "polygon", alpha = 0.1, aes(x = NMDS1, y = NMDS2, fill = Treatment),
-                level = 0.6, size = 10)+ # Not an actual confidence ellipse, but matches that of ordiplot
-    scale_fill_manual(values=co)+
-    geom_point(aes(x = NMDS1,y = NMDS2, colour = Treatment), size= 2)+
-    scale_color_manual(values=co)+
-    scale_y_continuous(breaks = c(-1, 0, 1), limits = c(-1, 1))+
-    scale_x_continuous(limits = c(-2, 2))+
-    theme_bw()+
-    theme(legend.text = element_text(size = 12),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          axis.title.y = element_text(size = 14, face = "plain", vjust = 3),
-          axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
-          axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),
-          axis.text.x = element_text(size = 14, face = "bold", vjust = 0.5),
-          legend.position="bottom",
-          legend.title = element_blank(),
-          plot.margin = margin(0, 0, 0.1, 0.5, "cm"))+
-     guides(fill = guide_legend(nrow = 1))
-leg <- get_legend(Ordi.Diet.Patch)
-ggsave("Fish_Ordination diet_Patch_Biomass.tiff", width = 18, height = 10, units = "cm", dpi=1200, compression = "lzw")
-
-#### On Species level
-##### Adjust font size based on % of surveys in which a species is seen
-specsizes.bio.diet <- subbcDiet.bio[,3:ncol(subbcDiet.bio)]
-specsizes.bio.diet <- colSums(specsizes.bio.diet)
-specsizes.bio.diet.min <- min(specsizes.bio.diet)
-specsizes.bio.diet.max <- max(specsizes.bio.diet)
-cex.bio.diet.min <- 1
-cex.bio.diet.max <- 2
-specsizes.bio.diet <- ((specsizes.bio.diet - specsizes.bio.diet.min)/(specsizes.bio.diet.max-specsizes.bio.diet.min)) * (cex.bio.diet.max - cex.bio.diet.min) + cex.bio.diet.min
-
-##### Plot on Species level
-##### For composite
-cox.diet <- c(co, "#0673B0", "#0673B0", "#0673B0") 
-pdf(NULL)
-dev.control(displaylist="enable")
-par(bg = 'white',   las=1, tck=-0.007, cex.axis=1.1, cex.lab = 1.1, font.axis = 2, mar=c(4.5, 4.2, 0.1, 0.2), 
-    col.axis = "#464646")
-ordiplot(NMDS.Bio.Diet, type="none",  cex = 0.3, ylim = c(-0.5, 0.5), xlim = c(-1.9, 2.2))
-ordiellipse(NMDS.Bio.Diet, groups = subbcDiet.bio$Year, kind = "se", conf = 0.99, draw  ="polygon", 
-            col = cox.diet, alpha = 50, label = F, lty = 'blank', border = "white")
-ordipointlabel(NMDS.Bio.Diet, display = "species", scaling = "symmetric", add = TRUE,
-               cex = specsizes.bio.diet, font = 3)
-Ordi.Diet.Sp <- recordPlot()
-invisible(dev.off())
-Ordi.Diet.Sp <- plot_grid(Ordi.Diet.Sp) + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
-ggsave("Fish_Ordination_Diet by group.tiff", width = 18, height = 12, units = "cm", dpi=1200, compression = "lzw", Ordi.Diet.Sp)
-
-## ==== Composite ====
-ORDI <- plot_grid(Ordi.Sp.Sp, Ordi.Diet.Patch,  nrow = 3, align = "v", rel_heights = c(1,1,1.3),
-                  labels = c("A: Species", "B: Diet"),
-                  hjust = c(-0.8, -1, -1.25), vjust = 1.6)
-ggsave("Fish_Ordination_Compilation.tiff", width = 18, height = 24, units = "cm", dpi=1200, compression = "lzw", ORDI)
-
-# TODO: remove large white space in between?!?
-ORDI2 <- plot_grid(Ordi.Sp.Sp, Ordi.Diet.Sp,  leg,  nrow = 3,  rel_heights = c(1.2,0.8,0.1),
-                  labels = c("A: Species", "B: Diet", ""), align = "hv", greedy = F,
-                  hjust = c(-1, -1.6, 0), vjust = c(2, 2, 0))
-ggsave("Fish_Ordination_Compilation2.tiff", width = 18, height = 24, units = "cm", dpi=1200, compression = "lzw", ORDI2)
-
-
-
-##### High res Species plot
-#tiff("Fish_Ordination species_Species_Biomass_Highres.tiff", width = 18, height = 14, units = "cm", res = 3500, compression = "lzw")
-#Ordi.Sp.Sp
-#dev.off()
+# bio.ord <- spread(bio, key = Species, value = Biomass_ha) # Wide to long
+# bio.ord <- select(bio.ord, -c(2:5))
+# bio.ord[is.na(bio.ord)] <- 0
+# bio.ord <- aggregate(. ~ SurveyNo, data = bio.ord, FUN = sum, na.action = na.omit) # Sum each Species per Survey
+# 
+# ### Add info and re-add surveys without observations
+# bio.ord <- left_join(surveys, bio.ord, by = "SurveyNo")
+# bio.ord <- select(bio.ord, -c(3,5,6))
+# 
+# ### Data selection
+# bio.ord[is.na(bio.ord)] <- 0 # Set all Species to 0 for surveys without observations
+# 
+# ## Create replicate
+# bio.ord.years <- bio.ord 
+# 
+# ### average over replicate surveys
+# bio.ord <- aggregate(.~Transect+Year, bio.ord, mean)
+# bio.ord.years <- aggregate(.~Transect+Year, bio.ord.years, mean)
+# 
+# ## ==== Diet ====
+# ### Create data frame
+# bioDiet <- bioDiet %>% select(-Year)
+# bioBrayDiet <- merge(surveys[, c(1:5, 7)], bioDiet, all.x = TRUE)
+# bioBrayDiet <- bioBrayDiet %>% select(-14)
+# 
+# bioBrayDiet$Transect <- as.factor(bioBrayDiet$Transect)
+# bioBrayDiet$Year <- as.factor(bioBrayDiet$Year)
+# 
+# bioBrayDiet <- bioBrayDiet %>% select(-c(1:3, 5))
+# 
+# 
+# ### Average over replicate surveys
+# subbcDiet.bio <- aggregate(.~Transect+Year, bioBrayDiet, mean)
+# 
+# # ---- STATS ----
+# 
+# ## ==== Species ====
+# #### Create a Bray-Curtis mean distance table 
+# BCtable.Bio.Specs <- vegdist(bio.ord[,6:ncol(bio.ord)], "bray")
+# BCtable.Bio.Specs.tab <- as.data.frame(meandist(BCtable.Bio.Specs, bio.ord$Year, cluster=average))
+# 
+# #### Stats
+# adonis.Bio.Specs <- adonis2(formula = BCtable.Bio.Specs ~ Year, data = bio.ord, permutations = 9999)
+# pairadonis.Bio.Specs <- pairwise.adonis(BCtable.Bio.Specs, bio.ord$Year, p.adjust='bonferroni', perm = 37000)
+# 
+# #### NMDS
+# NMDS.Bio.Spec <- metaMDS(bio.ord[,6:ncol(bio.ord)], distance = "bray", k = 2, trymax=3000, autotransform = FALSE) 
+# 
+# ### #### Years #### Replicate
+# BCtable.Bio.Specs.years <- vegdist(bio.ord.years[,6:ncol(bio.ord.years)], "bray")
+# 
+# #### Stats
+# adonis.Bio.Specs.years <- adonis2(formula = BCtable.Bio.Specs.years ~ Year,
+#                                   data = bio.ord.years, permutations = 9999)
+# pairadonis.Bio.Specs.years <- pairwise.adonis(BCtable.Bio.Specs.years, bio.ord.years$Year,
+#                                               p.adjust='bonferroni', perm = 37000)
+# 
+# #### NMDS
+# NMDS.Bio.Spec.years <- metaMDS(bio.ord.years[,6:ncol(bio.ord.years)],
+#                                distance = "bray", k = 2, trymax=3000, autotransform = FALSE) 
+# 
+# ## ==== Diet ==== #### 
+# ### Create a bc mean distance table 
+# BCtable.Bio.Diet <- vegdist(subbcDiet.bio[,3:ncol(subbcDiet.bio)], "bray")
+# BCtable.Bio.Diet.tab <- as.data.frame(meandist(BCtable.Bio.Diet, subbcDiet.bio$Year, cluster=average))
+# 
+# ### Stats
+# adonis.Bio.Diet <- adonis2(formula = BCtable.Bio.Diet ~ Year, data = subbcDiet.bio, permutations = 9999)
+# pairadonis.Bio.Diet <- pairwise.adonis(BCtable.Bio.Diet, subbcDiet.bio$Year, p.adjust = 'bonferroni', perm = 37000)
+# 
+# ### NMDS
+# NMDS.Bio.Diet <- metaMDS(subbcDiet.bio[,3:ncol(subbcDiet.bio)], distance = "bray", k = 2, trymax=1000, autotransform = FALSE) 
+# 
+# ## ==== Years (Based on Abundance rather than Biomass) ====
+# ### Create a bc mean distance table 
+# 
+# Specs.sum.min <- Specs
+# BCtable.Abu.Years <- vegdist(Specs.sum.min[,3:ncol(Specs.sum.min)], "bray")
+# BCtable.Abu.Years.tab <- as.data.frame(meandist(BCtable.Abu.Years, Specs.sum.min$Year, cluster=average))
+# 
+# ### Stats
+# adonis.Abu.Years <- adonis2(formula = BCtable.Abu.Years ~ Year, data = Specs.sum.min, permutations = 9999)
+# pairadonis.Abu.Years <- pairwise.adonis(BCtable.Abu.Years, Specs.sum.min$Year, p.adjust = 'bonferroni', perm = 37000)
+# 
+# ### NMDS
+# NMDS.Abu.Years <- metaMDS(Specs.sum.min[,3:ncol(Specs.sum.min)], distance = "bray", k = 2, trymax=1000, autotransform = FALSE)
+# 
+# 
+# # ---- PLOTS ----
+# 
+# ## ==== Species ==== ### 
+# ##### On Year level
+# NMDS.Bio.Spec.Year <- as.data.frame(scores(NMDS.Bio.Spec, display="site"))
+# NMDS.Bio.Spec.Year$Treatment <- subbcDiet.bio$Year
+# NMDS.Bio.Spec.Year$Interaction <- subbcDiet.bio$Interaction
+# 
+# Ordi.Sp.Patch <- ggplot(data = NMDS.Bio.Spec.Year)+
+#     stat_ellipse(geom = "polygon", alpha = 0.1, aes(x = NMDS1, y = NMDS2, fill = Treatment),
+#                 level = 0.5, size = 12)+
+#     scale_fill_manual(values=co)+
+#     geom_point(aes(x = NMDS1,y = NMDS2, colour = Treatment), size= 2)+
+#     scale_color_manual(values=co)+
+#     scale_y_continuous(limits = c(-2, 2), breaks = c(-2, 0, 2))+
+#     theme_bw()+
+#     theme(legend.position = "none",
+#           legend.text = element_text(size = 12),
+#           panel.grid.major = element_blank(),
+#           panel.grid.minor = element_blank(),
+#           axis.title.y = element_text(size = 14, face = "plain", vjust = 3),
+#           axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
+#           axis.title.x = element_blank(),
+#           axis.text.x = element_blank(),
+#           plot.margin = margin(0, 0, 0.2, 0.5, "cm"),
+#           axis.ticks.length.x = unit(0, "cm"))
+# #ggsave("Fish_Ordination species_Patch_Biomass.tiff", width = 18, height = 14, units = "cm", dpi=1200, compression = "lzw")
+# 
+# #### On Species level
+# ##### Adjust font size based on % of surveys in which a species is seen
+# specsizes.bio <- bio.ord[,6:ncol(bio.ord)]
+# specsizes.bio <- colSums(specsizes.bio)
+# specsizes.bio.min <- min(specsizes.bio)
+# specsizes.bio.max <- max(specsizes.bio)
+# cex.bio.min <- 0.05
+# cex.bio.max <- 2
+# specsizes.bio <- ((specsizes.bio - specsizes.bio.min)/(specsizes.bio.max-specsizes.bio.min)) * (cex.bio.max - cex.bio.min) + cex.bio.min
+# 
+# ##### Plot on Species level
+# ##### For composite
+# cox <- c(co, "#0673B0", "#0673B0", "#0673B0") 
+# 
+# pdf(NULL)
+# dev.control(displaylist="enable")
+# par(bg = 'white',   las=1, tck=-0.007, cex.axis=1.1, cex.lab = 1.1, font.axis = 2, mar=c(6.5, 4.2, 0.1, 0.2), 
+#     col.axis = "#464646")
+# ordiplot(NMDS.Bio.Spec, type="none",  cex = 0.3, ylim = c(-1.1, 1.1), xlim = c(-0.1, 0.9))
+# ordiellipse(NMDS.Bio.Spec, groups = bio.ord$Year, kind = "se", conf = 0.99, draw  ="polygon", 
+#             col = cox, alpha = 50, label = F, lty = 'blank', border = "white")
+# ordipointlabel(NMDS.Bio.Spec, display = "species", scaling = "symmetric", add = TRUE,
+#                cex = specsizes.bio, font = 3)
+# Ordi.Sp.Sp <- recordPlot()
+# invisible(dev.off())
+# #Ordi.Sp.Sp <- plot_grid(Ordi.Sp.Sp) + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
+# 
+# #png("Ordi_Sp_Sp.png", width = 1200, height = 1000, res = 150)
+# replayPlot(Ordi.Sp.Sp)
+# dev.off()
+# 
+# tiff("Ordi_Sp_Sp.tiff", width = 8, height = 6.5, units = "in", res = 300, compression = "lzw")
+# replayPlot(Ordi.Sp.Sp)
+# dev.off()
+# 
+# #### Years ####
+# ##### Adjust font size based on % of surveys in which a species is seen
+# specsizes.bio.years <- bio.ord.years[,6:ncol(bio.ord.years)]
+# specsizes.bio.years <- colSums(specsizes.bio.years)
+# specsizes.bio.years.min <- min(specsizes.bio.years)
+# specsizes.bio.years.max <- max(specsizes.bio.years)
+# cex.bio.years.min <- 0.03
+# cex.bio.years.max <- 2
+# specsizes.bio.years <- ((specsizes.bio.years - specsizes.bio.years.min)/(specsizes.bio.years.max-specsizes.bio.years.min)) * (cex.bio.years.max - cex.bio.years.min) + cex.bio.years.min
+# 
+# ##### Plot on Species*Year level # everything looks too crowded. Solution: get the first 3 letters of every species
+# tiff("Fish_Ordination_species_Species_Years_Biomass.tiff",
+#      width = 18, height = 14, units = "cm", res = 300, compression = "lzw")
+# 
+# Ordi.Sp.Sp.years <- ordiplot(NMDS.Bio.Spec.years, type="none",
+#                              cex = 0.3, ylim = c(-0.3, 0.2), xlim = c(-1.8, 2.1))
+# ordiellipse(NMDS.Bio.Spec.years, groups = bio.ord.years$Year, kind = "se", conf = 0.99, draw  ="polygon", 
+#             col = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733"), alpha = 50, label = T, lty = 'blank', border = "white")
+# ordipointlabel(NMDS.Bio.Spec.years, display = "species", scaling = 9, add = TRUE, cex = specsizes.bio.years)
+# dev.off()
+# 
+# #### Based on Abundance
+# ##### Adjust font size based on % of surveys in which a species is seen
+# specsizes.abu.years <- Specs.sum.min[,3:ncol(Specs.sum.min)]
+# specsizes.abu.years <- colSums(specsizes.abu.years)
+# Specs.sum.min.min <- min(specsizes.abu.years)
+# Specs.sum.min.max <- max(specsizes.abu.years)
+# cex.abu.years.min <- 0.03
+# cex.abu.years.max <- 2
+# specsizes.abu.years <- ((specsizes.abu.years - cex.abu.years.min)/(Specs.sum.min.max-Specs.sum.min.min)) * (cex.abu.years.max - cex.abu.years.min) + cex.abu.years.min
+# 
+# ##### Plot on Species*Study level
+# tiff("Fish_Ordination species_Species_Years_Abundance.tiff", width = 18, height = 14, units = "cm", res = 1500, compression = "lzw")
+# Ordi.Sp.Sp.years.abu <- ordiplot(NMDS.Abu.Years, type="none",
+#                              cex = 0.3, ylim = c(-0.3, 0.2), xlim = c(-1.8, 2.1))
+# ordiellipse(NMDS.Abu.Years, groups = Specs.sum.min$Year, kind = "se", conf = 0.99, draw  ="polygon", 
+#             col = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF", "#D04E08", "#0673B0", "#FF5733"), alpha = 50, label = T, lty = 'blank', border = "white")
+# ordipointlabel(NMDS.Abu.Years, display = "species", scaling = 9, add = TRUE, cex = specsizes.abu.years)
+# dev.off()
+# 
+# ## ==== Diet ====
+# ### On Patch level
+# NMDS.Bio.Diet.Patch <- as.data.frame(scores(NMDS.Bio.Diet, display="site"))
+# NMDS.Bio.Diet.Patch$Treatment <- ifelse(subbcDiet.bio$Year == 2018, "2018",
+#                                  ifelse(subbcDiet.bio$Year == 2019, "2019",       
+#                                  ifelse(subbcDiet.bio$Year == 2020, "2020",       
+#                                  ifelse(subbcDiet.bio$Year == 2021, "2021",       
+#                                  ifelse(subbcDiet.bio$Year == 2022, "2022",      
+#                                  ifelse(subbcDiet.bio$Year == 2023, "2023",
+#                                  ifelse(subbcDiet.bio$Year == 2024, "2024", "Other")))))))
+# 
+# 
+# Ordi.Diet.Patch <- ggplot(data = NMDS.Bio.Diet.Patch)+
+#     stat_ellipse(geom = "polygon", alpha = 0.1, aes(x = NMDS1, y = NMDS2, fill = Treatment),
+#                 level = 0.6, size = 10)+ # Not an actual confidence ellipse, but matches that of ordiplot
+#     scale_fill_manual(values=co)+
+#     geom_point(aes(x = NMDS1,y = NMDS2, colour = Treatment), size= 2)+
+#     scale_color_manual(values=co)+
+#     scale_y_continuous(breaks = c(-1, 0, 1), limits = c(-1, 1))+
+#     scale_x_continuous(limits = c(-2, 2))+
+#     theme_bw()+
+#     theme(legend.text = element_text(size = 12),
+#           panel.grid.major = element_blank(),
+#           panel.grid.minor = element_blank(),
+#           axis.title.y = element_text(size = 14, face = "plain", vjust = 3),
+#           axis.text.y = element_text(size = 14, face = "bold", vjust = 0.4),
+#           axis.title.x = element_text(size = 14, face = "plain", vjust = -0.5),
+#           axis.text.x = element_text(size = 14, face = "bold", vjust = 0.5),
+#           legend.position="bottom",
+#           legend.title = element_blank(),
+#           plot.margin = margin(0, 0, 0.1, 0.5, "cm"))+
+#      guides(fill = guide_legend(nrow = 1))
+# leg <- get_legend(Ordi.Diet.Patch)
+# ggsave("Fish_Ordination diet_Patch_Biomass.tiff", width = 18, height = 10, units = "cm", dpi=1200, compression = "lzw")
+# 
+# #### On Species level
+# ##### Adjust font size based on % of surveys in which a species is seen
+# specsizes.bio.diet <- subbcDiet.bio[,3:ncol(subbcDiet.bio)]
+# specsizes.bio.diet <- colSums(specsizes.bio.diet)
+# specsizes.bio.diet.min <- min(specsizes.bio.diet)
+# specsizes.bio.diet.max <- max(specsizes.bio.diet)
+# cex.bio.diet.min <- 1
+# cex.bio.diet.max <- 2
+# specsizes.bio.diet <- ((specsizes.bio.diet - specsizes.bio.diet.min)/(specsizes.bio.diet.max-specsizes.bio.diet.min)) * (cex.bio.diet.max - cex.bio.diet.min) + cex.bio.diet.min
+# 
+# ##### Plot on Species level
+# ##### For composite
+# cox.diet <- c(co, "#0673B0", "#0673B0", "#0673B0") 
+# pdf(NULL)
+# dev.control(displaylist="enable")
+# par(bg = 'white',   las=1, tck=-0.007, cex.axis=1.1, cex.lab = 1.1, font.axis = 2, mar=c(4.5, 4.2, 0.1, 0.2), 
+#     col.axis = "#464646")
+# ordiplot(NMDS.Bio.Diet, type="none",  cex = 0.3, ylim = c(-0.5, 0.5), xlim = c(-1.9, 2.2))
+# ordiellipse(NMDS.Bio.Diet, groups = subbcDiet.bio$Year, kind = "se", conf = 0.99, draw  ="polygon", 
+#             col = cox.diet, alpha = 50, label = F, lty = 'blank', border = "white")
+# ordipointlabel(NMDS.Bio.Diet, display = "species", scaling = "symmetric", add = TRUE,
+#                cex = specsizes.bio.diet, font = 3)
+# Ordi.Diet.Sp <- recordPlot()
+# invisible(dev.off())
+# Ordi.Diet.Sp <- plot_grid(Ordi.Diet.Sp) + theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
+# ggsave("Fish_Ordination_Diet by group.tiff", width = 18, height = 12, units = "cm", dpi=1200, compression = "lzw", Ordi.Diet.Sp)
+# 
+# ## ==== Composite ====
+# ORDI <- plot_grid(Ordi.Sp.Sp, Ordi.Diet.Patch,  nrow = 3, align = "v", rel_heights = c(1,1,1.3),
+#                   labels = c("A: Species", "B: Diet"),
+#                   hjust = c(-0.8, -1, -1.25), vjust = 1.6)
+# ggsave("Fish_Ordination_Compilation.tiff", width = 18, height = 24, units = "cm", dpi=1200, compression = "lzw", ORDI)
+# 
+# # TODO: remove large white space in between?!?
+# ORDI2 <- plot_grid(Ordi.Sp.Sp, Ordi.Diet.Sp,  leg,  nrow = 3,  rel_heights = c(1.2,0.8,0.1),
+#                   labels = c("A: Species", "B: Diet", ""), align = "hv", greedy = F,
+#                   hjust = c(-1, -1.6, 0), vjust = c(2, 2, 0))
+# ggsave("Fish_Ordination_Compilation2.tiff", width = 18, height = 24, units = "cm", dpi=1200, compression = "lzw", ORDI2)
+# 
+# 
+# 
+# ##### High res Species plot
+# #tiff("Fish_Ordination species_Species_Biomass_Highres.tiff", width = 18, height = 14, units = "cm", res = 3500, compression = "lzw")
+# #Ordi.Sp.Sp
+# #dev.off()
 
 ```
 
@@ -1552,7 +2036,7 @@ survey_meta <- BiomassNMDS %>%
   select(SurveyNo, Transect, Depth.MLLW, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
   distinct()
 
-## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
+## Sum biomass per herbivore guild per survey, and fill in 0 if there are none.
 BiomassNMDS <- BiomassNMDS %>%
   group_by(SurveyNo, Species) %>%
   summarise(Biomass = sum(Biomass_kgha),
@@ -1574,25 +2058,23 @@ BiomassNMDS_data <- BiomassNMDS[2:46]
 rm(survey_meta)
 
 # Make NMDS plot
-nmds = metaMDS(BiomassNMDS_data3, distance = "bray")
+nmds = metaMDS(BiomassNMDS_data, distance = "bray")
 data.scores = as.data.frame(scores(nmds)$sites)
 
 #add columns to data frame 
 data.scores$Patch.type = BiomassNMDS$Patch.type
-head(data.scores)
-
 coords <- as.data.frame(nmds$points)
 
 # Get two samples with highest NMDS1 values:
-outliers <- coords[order(coords$MDS1, decreasing = TRUE)[1:2], ]
-outliers
+outliers1 <- coords[order(coords$MDS1, decreasing = TRUE)[1:2], ]
+outliers2 <- coords[order(coords$MDS2, decreasing = TRUE)[1:1], ]
 
 data.scores$SampleID <- rownames(data.scores)
 
 ggplot(data.scores,aes(x = NMDS1, y = NMDS2)) +
   geom_point(size = 3, aes(colour = Patch.type)) +
   geom_text(
-  data = subset(data.scores, SampleID %in% c("304", "305")),
+  data = subset(data.scores, SampleID %in% c("240","304","305")),
   aes(label = SampleID),
   hjust = -0.2, fontface = "bold", size = 4) +
   theme(axis.text = element_text(size = 12, colour = "black"),
@@ -1601,7 +2083,7 @@ ggplot(data.scores,aes(x = NMDS1, y = NMDS2)) +
     legend.title = element_text(size = 14),
     panel.background = element_blank(),
     panel.border = element_rect(fill = NA, colour = "black", size = 1.2)) +
-  labs(x = "NMDS1", y = "NMDS2", colour = "Patch.type", fill = "Patch.type") +
+  labs(x = "NMDS1", y = "NMDS2", colour = "Patch.type") +
   scale_colour_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733")) +
   scale_fill_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733"))
 
@@ -1615,13 +2097,12 @@ ggplot(data.scores,aes(x = NMDS1, y = NMDS2)) +
 # Remove rows with non-herbivorous fish, and non-instantaneous observations
 BiomassNMDS <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
 
-# Go from Biomass to species Biomass, and bring back 0 values for groups without observations
 ## First store metadata
 survey_meta <- BiomassNMDS %>%
   select(SurveyNo, Transect, Depth.MLLW, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
   distinct()
 
-## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
+## Summarize all size classes into one row
 BiomassNMDS <- BiomassNMDS %>%
   group_by(SurveyNo, Species) %>%
   summarise(Biomass = sum(Biomass_kgha),
@@ -1631,7 +2112,7 @@ BiomassNMDS <- BiomassNMDS %>%
 BiomassNMDS <- BiomassNMDS %>% pivot_wider( names_from = Species, values_from = Biomass)
 BiomassNMDS[is.na(BiomassNMDS)] <- 0
 
-# Identify surveys with no herbivorous fish & Remove
+# Identify surveys with no herbivorous fish & Remove >> Otherwise vegdist doesn't work
 empty_rows <- rowSums(BiomassNMDS[,-1]) == 0
 empty_cols <- colSums(BiomassNMDS[,-1]) == 0
 BiomassNMDS <- BiomassNMDS[ !empty_rows, ]
@@ -1646,31 +2127,39 @@ rm(survey_meta)
 # BiomassNMDS_data2 <- sqrt(BiomassNMDS_data)                  # square root <- isn't improved
 # BiomassNMDS_data3 <- decostand(BiomassNMDS_data, "hellinger") # also no improvement
 
-head(BiomassNMDS_data)
+# PERMANOVA
+# Bray-Curtis distance
+bray_dist <- vegdist(BiomassNMDS_data, method = "bray")
+
+## Adonis
+adonis_results <- adonis2(BiomassNMDS_data ~ Patch.type,
+                          data = BiomassNMDS,
+                          method = "bray",
+                          permutations = 999)
+print(adonis_results)
+
+## Check homogeneity of dispersions
+disp <- betadisper(bray_dist, BiomassNMDS$Patch.type)
+disp_anova <- anova(disp)
+print(disp_anova)
 
 # Make NMDS plot
-nmds = metaMDS(BiomassNMDS_data3, distance = "bray")
+nmds = metaMDS(BiomassNMDS_data, distance = "bray")
 data.scores = as.data.frame(scores(nmds)$sites)
 
-#add columns to data frame 
+#add patch type to data frame 
 data.scores$Patch.type = BiomassNMDS$Patch.type
-head(data.scores)
-
 coords <- as.data.frame(nmds$points)
 
 # Get two samples with highest NMDS1 values:
-outliers <- coords[order(coords$MDS1, decreasing = TRUE)[1:2], ]
-outliers
+outliers1 <- coords[order(coords$MDS1, decreasing = TRUE)[1:2], ]
+outliers2 <- coords[order(coords$MDS2, decreasing = TRUE)[1:1], ]
 
 data.scores$SampleID <- rownames(data.scores)
 
-# Start from full data and null out the 2 outliers only for ellipse grouping
+# Start from full data and null out the 3 outliers only for ellipse grouping
 data_ell <- data.scores
-data_ell$Patch.type[data_ell$SampleID %in% c("304","305")] <- NA  # mask them, don't drop
-
-# Remove any Patch types that now have <2 samples
-valid_groups <- names(which(table(data_ell$Patch.type, useNA = "no") >= 2))
-data_ell$Patch.type[!(data_ell$Patch.type %in% valid_groups)] <- NA  # mask small groups too
+data_ell$Patch.type[data_ell$SampleID %in% c("240","304","305")] <- NA  # mask them, don't drop
 
 # Now run ordiellipse with a full-length grouping vector
 ell <- ordiellipse(
@@ -1681,27 +2170,20 @@ ell <- ordiellipse(
   draw = "none"
 )
 
-# 3. Generate ellipse dataframe from filtered ellipse object
 ellipse_df <- do.call(rbind, lapply(names(ell), function(g) {
   df <- as.data.frame(
-    veganCovEllipse(ell[[g]]$cov, ell[[g]]$center, sqrt(qchisq(0.99, df = 2)))
+    vegan:::veganCovEllipse(ell[[g]]$cov, ell[[g]]$center, sqrt(qchisq(0.99, df = 2)))
   )
   colnames(df) <- c("NMDS1", "NMDS2")
   df$Patch.type <- g
   df
 }))
 
-ggplot(subset(data.scores, !(SampleID %in% c("304", "305"))), 
+ggplot(subset(data.scores, !(SampleID %in% c("240","304","305"))), 
         aes(x = NMDS1, y = NMDS2)) +
         geom_point(size = 3, aes(colour = Patch.type)) +
   geom_polygon(data = ellipse_df, aes(x = NMDS1, y = NMDS2, fill = Patch.type),
                alpha = 0.25, colour = NA) +
-  geom_text(
-  data = subset(data.scores, SampleID %in% c("304", "305")),
-  aes(label = SampleID),
-  hjust = -0.2, fontface = "bold", size = 4
-) +
- coord_cartesian(xlim = c(-0.2, 0.1), ylim = c(-0.1, 0.1)) +
   theme(axis.text = element_text(size = 12, colour = "black"),
     axis.title = element_text(size = 14),
     legend.text = element_text(size = 12),
