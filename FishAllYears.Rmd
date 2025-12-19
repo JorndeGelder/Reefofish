@@ -1,7 +1,7 @@
 =======
 title: Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size
 author: Jorn de Gelder
-date: 17/12/2025
+date: 19/12/2025
 ---
 
 # if on MSI laptop (Jorn)
@@ -12,6 +12,7 @@ setwd("C:/Users/Jorn de Gelder/Documents/Thesis R")
 rm(list=ls()) # Clear workspace
 knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
 options(scipen = 99) # Have all numbers in non-scientific notation
+
 
 library(readxl) # Join data frames (vlookup)
 library(cowplot) # Combine plots
@@ -42,6 +43,7 @@ library(robustlmm)
 library(multcomp) # for CLD
 library(multcompView) # for CLD
 library(purrr) # for centroid calc
+library(devEMF) # for saving plots
 ```
 
 # Load RAW data (Only need to run after new raw data input: Takes about 30 mins)
@@ -1755,7 +1757,7 @@ MSplot1 <- ggplot(emm1_df, aes(x = YearGroup, y = response)) +
   geom_text(aes(label = .group, y = asymp.UCL), vjust = -0.5, size = 4) +
   labs(x = "Year Group", y = "Mean Size (cm)",
        title = "Mean herbivore fish size per survey over time",
-      subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
+      subtitle = "Main effect (YearGroup × Guild × Patch.type interaction significant)") +
   theme_bw()
 
 # Plot 2: Yeargroup x DietH interaction
@@ -1779,7 +1781,8 @@ MSplot2 <- ggplot(emm4_df, aes(x = DietH, y = response, color = YearGroup, group
             show.legend = FALSE) +
   labs(x = "Herbivore guild", y = "Mean Size (cm)",
        color = "Year Group",
-       title = "Mean herbivore fish size per survey over time, by guild") +
+       title = "Mean herbivore fish size per survey over time, by guild",
+      subtitle = "Averaged over Patch.type (YearGroup × Guild × Patch.type interaction significant)") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
@@ -1795,7 +1798,8 @@ MSplot3 <- ggplot(emm3_df, aes(x = Patch.type, y = response)) +
   geom_point(size = 3) +
   geom_text(aes(label = .group, y = asymp.UCL), vjust = -0.5, size = 4) +
   labs(x = "Patch Type", y = "Mean Size (cm)",
-       title = "Mean herbivore fish size per survey by patch type") +
+       title = "Mean herbivore fish size per survey by patch type",
+        subtitle = "Main effect (YearGroup × Guild × Patch.type interaction significant)") +
   theme_bw()
 
 # Post-hoc
@@ -1836,9 +1840,9 @@ print(MSplot1)
 print(MSplot2)
 print(MSplot3)
 ```
-## Old plots (three-way)
+## Three-way
 ```{r}
-# Plot 5: Three-way interaction (YearGroup x Patch.type x DietH)
+# Plot 5: YearGroup x Patch.type x DietH interaction
 emm5 <- emmeans(MSmodelLoglink5, ~ DietH * Patch.type * YearGroup, type = "response")
 emm5_df <- as.data.frame(emm5)
 
@@ -1873,7 +1877,7 @@ for (patch in unique(emm5_df$Patch.type)) {
 }
 emm5_df <- do.call(rbind, cld_list5)
 
-plot5 <- ggplot(emm5_df, aes(x = DietH, y = response, 
+MSplot5 <- ggplot(emm5_df, aes(x = DietH, y = response, 
                              color = factor(YearGroup), 
                              group = factor(YearGroup))) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
@@ -1883,17 +1887,19 @@ plot5 <- ggplot(emm5_df, aes(x = DietH, y = response,
             position = position_dodge(width = 0.5), 
             vjust = -0.5, size = 3, show.legend = FALSE) +
   facet_wrap(~ Patch.type, ncol = 1, scales = "free_y") +
+  scale_y_continuous(limits = c(0, NA), expand = expansion(add = c(0, 5))) +
   labs(x = "Diet", y = "Mean Size (cm)", 
-       title = "Mean Size by Guild, Patch Type, and Year Group (Three-way Interaction)",
+       title = "Mean herbivore fish size per survey over time, by guild and by patch type",
        color = "Year Group") +
   theme_bw() +
-  theme(strip.text = element_text(face = "bold"))
+  theme(strip.text = element_text(face = "plain"),
+        strip.background = element_blank())  # Remove grey background from facet labels
 
 Y_contrasts <- contrast(emm5,
                         "pairwise",
                         by = c("DietH","Patch.type"))
 summary(Y_contrasts, infer = TRUE)
-print(plot5)
+print(MSplot5)
 
 ```
 # Abundance
@@ -3026,6 +3032,7 @@ create_facet_inset <- function(year_group, outliers) {
   ggplot(data_inset, aes(x = NMDS1, y = NMDS2)) +
     geom_point(size = 1.5, aes(colour = InsetColor)) +
     scale_colour_manual(values = inset_colors) +
+    scale_x_continuous(breaks = scales::breaks_pretty(n = 3)) +
     theme_minimal() +
     theme(
       legend.position = "none",
@@ -3053,7 +3060,7 @@ plots_list <- lapply(seq_along(year_groups), function(i) {
     # Overlay inset on top-left, shifted right to avoid y-axis
     ggdraw() +
       draw_plot(main) +
-      draw_plot(inset, x = 0.12, y = 0.70, width = 0.25, height = 0.25)
+      draw_plot(inset, x = 0.72, y = 0.68, width = 0.25, height = 0.25)
   } else {
     # No inset, just main plot
     main
@@ -3075,25 +3082,205 @@ legend_plot <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2, colour = Patch.type
 legend <- get_legend(legend_plot)
 
 # Combine: 3 plots + legend using plot_grid from cowplot
-final_plot <- plot_grid(
+nMDSplot1 <- plot_grid(
   plots_list[[1]], 
   plots_list[[2]], 
   plots_list[[3]], 
   legend,
   nrow = 1,
-  rel_widths = c(1.08, 1, 1, 0.3)
+  rel_widths = c(1.09, 1, 1, 0.3)
 )
 
-final_plot
+nMDSplot1
 ```
 
 # Figure compilation
 ```{r compilation}
+# Saving all ggplot plots
+plots <- c("Rplot1", "Rplot2", "Rplot3",
+           "Aplot1", "Aplot2", "Aplot3",
+           "MSplot1", "MSplot2", "MSplot3",
+           "Bplot1", "Bplot2", "Bplot3")
 
-# # Richness, Abundance and Biomass combined in one panel
-# RAB <- plot_grid(Divplot, Bioplot,Abuplot, nrow = 3, align = "v", rel_heights = c(1,1,1.2),
-#                  labels = c("A", "B", "C"), label_size = 18)
-# ggsave("Fish_Richness and Abundance and Biomass.tiff", width = 18, height = 24, units = "cm", dpi=1200, compression = "lzw", RAB)
+for(p in plots){
+  # Get the actual plot object by name
+  plot_obj <- get(p)
+  
+  # Save EMF
+  ggsave(
+    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", paste0(p, ".emf")),
+    plot     = plot_obj,
+    device   = "emf",
+    width    = 7,
+    height   = 5
+  )
+  # Save PNG
+  ggsave(
+    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", paste0(p, ".png")),
+    plot     = plot_obj,
+    width    = 7,
+    height   = 5,
+    dpi      = 600
+  )
+}
 
+# Saving MSplot5, needs to be much higher
+# Save EMF
+ggsave(
+    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", paste0("MSplot5.emf")),
+    plot     = MSplot5,
+    device   = "emf",
+    width    = 7,
+    height   = 12
+  )
+# Save PNG
+ggsave(
+    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", paste0("MSplot5.png")),
+    plot     = MSplot5,
+    width    = 7,
+    height   = 12,
+    dpi      = 600
+  )
 
+# Saving nMDSplot1 (cowplot object) to same folders
+# EMF
+emf(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "nMDSplot1.emf"),
+    width = 15, height = 5)
+print(nMDSplot1)
+dev.off()
+
+# PNG
+png(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot1.png"),
+    width = 15, height = 5, units = "in", res = 600)
+print(nMDSplot1)
+dev.off()
+
+# # Richness, Abundance, Mean size, and Biomass combined in one panel
+# RAB1 plots - keep legends, remove titles, remove x-axis from top 3, add 10% y-expansion
+Rplot1_notitle <- Rplot1 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+Aplot1_notitle <- Aplot1 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+MSplot1_notitle <- MSplot1 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+Bplot1_notitle <- Bplot1 + 
+  labs(title = NULL, subtitle = NULL) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+# RAB2 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
+Rplot2_notitle_nolegend <- Rplot2 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+Aplot2_notitle_nolegend <- Aplot2 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+MSplot2_notitle_nolegend <- MSplot2 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+Bplot2_notitle_nolegend <- Bplot2 + 
+  labs(title = NULL, subtitle = NULL) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+# RAB3 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
+Rplot3_notitle_nolegend <- Rplot3 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+Aplot3_notitle_nolegend <- Aplot3 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+MSplot3_notitle_nolegend <- MSplot3 + 
+  labs(title = NULL, subtitle = NULL, x = NULL) + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+Bplot3_notitle_nolegend <- Bplot3 + 
+  labs(title = NULL, subtitle = NULL) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+
+# Extract legend from one of the plots (e.g., Rplot2_notitle)
+legend_shared <- get_legend(Rplot2_notitle)
+
+# Combine plots 1
+RAMSB1 <- plot_grid(Rplot1_notitle, Aplot1_notitle, MSplot1_notitle, Bplot1_notitle, 
+                  nrow = 4, 
+                  align = "v", 
+                  rel_heights = c(1, 1, 1, 1.15),
+                  labels = c("A", "B", "C", "D"), 
+                  label_size = 18,
+                  label_x = 0.00,
+                  label_y = 1.0)
+print(RAMSB1)
+
+# Combine plots 2
+RAMSB2_plots <- plot_grid(Rplot2_notitle_nolegend, Aplot2_notitle_nolegend, MSplot2_notitle_nolegend, Bplot2_notitle_nolegend, 
+                  nrow = 4, 
+                  align = "v", 
+                  rel_heights = c(1, 1, 1, 1.08),
+                  labels = c("A", "B", "C", "D"), 
+                  label_size = 18,
+                  label_x = 0.00,
+                  label_y = 1.0)
+RAMSB2 <- plot_grid(RAMSB2_plots, legend_shared, 
+                  ncol = 2, 
+                  rel_widths = c(1, 0.2))
+print(RAMSB2)
+
+# Combine plots 3
+RAMSB3_plots <- plot_grid(Rplot3_notitle_nolegend, Aplot3_notitle_nolegend, MSplot3_notitle_nolegend, Bplot3_notitle_nolegend, 
+                  nrow = 4, 
+                  align = "v", 
+                  rel_heights = c(1, 1, 1, 1.08),
+                  labels = c("A", "B", "C", "D"), 
+                  label_size = 18,
+                  label_x = 0.00,
+                  label_y = 1.0)
+RAMSB3 <- plot_grid(RAMSB3_plots, legend_shared, 
+                  ncol = 2, 
+                  rel_widths = c(1, 0.2))
+print(RAMSB3)
+
+# Save them
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time.png"), 
+       RAMSB1, width = 18, height = 32, units = "cm", dpi = 600)
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time.emf"), 
+       RAMSB1, width = 18, height = 32, units = "cm", device = "emf")
+
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_guild.png"), 
+       RAMSB2, width = 20, height = 32, units = "cm", dpi = 600)
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_guild.emf"), 
+       RAMSB2, width = 20, height = 32, units = "cm", device = "emf")
+
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_patch.png"), 
+       RAMSB3, width = 20, height = 32, units = "cm", dpi = 600)
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_patch.emf"), 
+       RAMSB3, width = 20, height = 32, units = "cm", device = "emf")
 ```
