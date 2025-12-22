@@ -1,7 +1,7 @@
 =======
 title: Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size
 author: Jorn de Gelder
-date: 19/12/2025
+date: 22/12/2025
 ---
 
 # if on MSI laptop (Jorn)
@@ -9,7 +9,7 @@ setwd("C:/Users/Jorn de Gelder/Documents/Thesis R")
 
 # Setup
 ```{r setup}
-rm(list=ls()) # Clear workspace
+rm(list=ls()) # Clear1 workspace
 knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
 options(scipen = 99) # Have all numbers in non-scientific notation
 
@@ -1714,11 +1714,8 @@ text(x = 25,
 ```
 ## Statistical models
 ```{r}
-# Version 3: Log-link, testing if distances are significant
-MSmodelLoglink1 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
-
-# Version 5: Log-link, excluding ARdist and using 0 proxies for reefdistance
-MSmodelLoglink3 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance + YearGroup * Patch.type + DietH + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
+# Version 5: Log-link, checking for significance of covariates. Couldn't use Reef.dist_m and AR_dist.m here due to convergence issues. Therefore, tested with proxies.
+MSmodelLoglink3 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance + ARdistance + YearGroup * Patch.type + DietH + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
 
 # Version 6: Log-link, only reef distance and without depth due to insignificance
 MSmodelLoglink5 <- glmmTMB(GuildMeansize ~ YearGroup * Patch.type * DietH  + Reefdistance + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
@@ -1727,8 +1724,7 @@ MSmodelLoglink5 <- glmmTMB(GuildMeansize ~ YearGroup * Patch.type * DietH  + Ree
 MSmodelLoglink6 <- glmmTMB(GuildMeansize ~ YearGroup * DietH + Patch.type + Reefdistance + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
 
 # Look at model
-Anova(MSmodelLoglink1) # Reefdistance is significant
-Anova(MSmodelLoglink3) # Depth is insignificant
+Anova(MSmodelLoglink3) # Depth & ARdistance are insignificant
 summary(MSmodelLoglink3)$coefficients$cond # Reefdistance has a small effect, but proportionally comparable some DietH / Year effects > include
 Anova(MSmodelLoglink5) # Here, three way-interaction is significant
 Anova(MSmodelLoglink6) # # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
@@ -1769,7 +1765,7 @@ emm2_df <- as.data.frame(cld_results)
 emm2_df$.group <- trimws(emm2_df$.group)
 
 # Create the plot
-MSplot2 <- ggplot(emm4_df, aes(x = DietH, y = response, color = YearGroup, group = YearGroup)) +
+MSplot2 <- ggplot(emm2_df, aes(x = DietH, y = response, color = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
@@ -1803,7 +1799,7 @@ MSplot3 <- ggplot(emm3_df, aes(x = Patch.type, y = response)) +
   theme_bw()
 
 # Post-hoc
-posthoc_year <- pairs(emm2)
+posthoc_year <- pairs(emm1)
 print("=== Plot 1: YearGroup comparisons ===")
 # print(posthoc_year) <if you want to see all non-significant as well.
 posthoc_year_df <- as.data.frame(posthoc_year)
@@ -1811,29 +1807,29 @@ posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
 print("Significant comparisons:")
 print(posthoc_year_sig)
 
-posthoc_patch <- pairs(emm3)
-print("=== Plot 2: Patch type comparisons ===")
-print(posthoc_patch) # <if you want to see all non-significant as well.
-posthoc_patch_df <- as.data.frame(posthoc_patch)
-posthoc_patch_sig <- posthoc_patch_df[posthoc_patch_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_patch_sig)
-
-print("=== Plot 3: YearGroup comparisons within each Guild ===")
-posthoc_diet_within <- pairs(emm4, by = "DietH")
+print("=== Plot 2: YearGroup comparisons within each Guild ===")
+posthoc_diet_within <- pairs(emm2, by = "DietH")
 # print(posthoc_diet_within)
 posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
 posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05, ]
 print("Significant comparisons:")
 print(posthoc_diet_within_sig)
 
-print("=== Plot 3: Guild comparisons within each YearGroup ===")
-posthoc_diet_between <- pairs(emm4, by = "YearGroup")
+print("=== Plot 2: Guild comparisons within each YearGroup ===")
+posthoc_diet_between <- pairs(emm2, by = "YearGroup")
 # print(posthoc_diet_between)
 posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
 posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
 print("Significant comparisons:")
 print(posthoc_diet_between_sig)
+
+posthoc_patch <- pairs(emm3)
+print("=== Plot 3: Patch type comparisons ===")
+print(posthoc_patch) # <if you want to see all non-significant as well.
+posthoc_patch_df <- as.data.frame(posthoc_patch)
+posthoc_patch_sig <- posthoc_patch_df[posthoc_patch_df$p.value < 0.05, ]
+print("Significant comparisons:")
+print(posthoc_patch_sig)
 
 # Display plots
 print(MSplot1)
@@ -2416,8 +2412,8 @@ species.scores <- as.data.frame(scores(nmds, display = "species"))
 coords <- as.data.frame(nmds$points)
 outliers1High <- coords[order(coords$MDS1, decreasing = TRUE)[1:5], ]
 outliers1Low <- coords[order(coords$MDS1, decreasing = FALSE)[1:5], ]
-outliers2High <- coords[order(coords$MDS2, decreasing = TRUE)[1:5], ]
-outliers2Low <- coords[order(coords$MDS2, decreasing = FALSE)[1:5], ]
+outliers2High <- coords[order(coords$MDS2, decreasing = TRUE)[1:7], ]
+outliers2Low <- coords[order(coords$MDS2, decreasing = FALSE)[1:7], ]
 
 ## Make vectors for the guilds, but exclude the three outliers
 ### Make species:guild frame, to look up which species belongs to which guild
@@ -2457,7 +2453,7 @@ vectors_segments_sig <- subset(vectors_segments, pval < 0.05)
 ggplot(site.scores,aes(x = NMDS1, y = NMDS2)) +
   geom_point(size = 3, aes(colour = Patch.type)) +
   geom_text(
-    data = subset(site.scores, SampleID %in% c("192","191","175","170","144", "163", "88")),
+    data = subset(site.scores, SampleID %in% c("193","175","170","144", "163", "88")),
     aes(label = SampleID),
     hjust = -0.2, fontface = "bold", size = 4
   ) +
@@ -2490,7 +2486,7 @@ ggplot(site.scores,aes(x = NMDS1, y = NMDS2)) +
 ```{r}
 # Start from full data and null out the 3 outliers only for ellipse grouping
 data_ell <- site.scores
-data_ell$Patch.type[data_ell$SampleID %in% c("192","191","175","170","144", "163", "88")] <- NA  # mask them, don't drop
+data_ell$Patch.type[data_ell$SampleID %in% c("193","175","170","144", "163", "88")] <- NA  # mask them, don't drop
 
 # Now run ordiellipse with a full-length grouping vector
 ell <- ordiellipse(
@@ -2501,7 +2497,7 @@ ell <- ordiellipse(
   draw = "none"
 )
 
-vectorfactor <- 2
+vectorfactor <- 0.50
 
 ellipse_df <- do.call(rbind, lapply(names(ell), function(g) {
   df <- as.data.frame(
@@ -2512,7 +2508,7 @@ ellipse_df <- do.call(rbind, lapply(names(ell), function(g) {
   df
 }))
 
-main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("192","191","175","170","144", "163", "88"))), 
+main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("193","175","170","144", "163", "88"))), 
         aes(x = NMDS1, y = NMDS2)) +
   geom_point(size = 3, aes(colour = Patch.type)) +
   geom_polygon(data = ellipse_df, aes(x = NMDS1, y = NMDS2, fill = Patch.type),
@@ -2526,7 +2522,7 @@ main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("192","191","175","170
   ) +
   geom_text(
     data = vectors_segments_sig,
-    aes(x = xend* vectorfactor * 1.1, y = yend * vectorfactor * 1.1, label = Guild),
+    aes(x = xend* vectorfactor * 1.05, y = yend * vectorfactor * 1.05, label = Guild),
     colour = "red",
     hjust = 0.5,
     vjust = -0.5,
@@ -2543,7 +2539,7 @@ main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("192","191","175","170
   scale_fill_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733"))
 
 # Create a column for coloring
-site.scores$InsetColor <- ifelse(site.scores$SampleID %in% c("192","191","175","170","144", "163", "88"),
+site.scores$InsetColor <- ifelse(site.scores$SampleID %in% c("193","175","170","144", "163", "88"),
                                  as.character(site.scores$Patch.type), "Other")
 
 # Define colors for Patch.type
@@ -2566,7 +2562,7 @@ inset_plot <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2)) +
 # Combine with main plot
 final_plot <- ggdraw() +
   draw_plot(main_plot) +
-  draw_plot(inset_plot, x = 0.15, y = 0.65, width = 0.20, height = 0.30)
+  draw_plot(inset_plot, x = 0.57, y = 0.65, width = 0.20, height = 0.30)
 
 final_plot
 ```
@@ -2726,10 +2722,8 @@ for (year in year_groups) {
   print(results_year)
 }
 
-
 ## Post-hoc manual pairwise PERMANOVA (for YearGroup within each Patch.type)
 ## Compare the same Patch.type across different YearGroups
-
 patch_types <- levels(BiomassNMDS$Patch.type)
 year_groups <- levels(BiomassNMDS$YearGroup)
 
@@ -2786,7 +2780,6 @@ site.scores = as.data.frame(scores(nmds)$sites)
 site.scores$Patch.type = BiomassNMDS_exclOUT$Patch.type
 site.scores$YearGroup = BiomassNMDS_exclOUT$YearGroup
 site.scores$SampleID <- rownames(site.scores)
-species.scores <- as.data.frame(scores(nmds, display = "species"))
 
 # Get two samples with highest NMDS1 values:
 coords <- as.data.frame(nmds$points)
@@ -2794,6 +2787,37 @@ outliers1High <- coords[order(coords$MDS1, decreasing = TRUE)[1:5], ]
 outliers1Low <- coords[order(coords$MDS1, decreasing = FALSE)[1:5], ]
 outliers2High <- coords[order(coords$MDS2, decreasing = TRUE)[1:5], ]
 outliers2Low <- coords[order(coords$MDS2, decreasing = FALSE)[1:5], ]
+
+## outliers to exclude for vector calculation.
+exclude_samples <- c("193","175","170","144", "163", "88")
+rows_to_exclude <- c(193,175,170,144,163,88)
+BiomassNMDS_data_filtered <- BiomassNMDS_data_exclOUT[-rows_to_exclude, ]
+nmds_filtered <- metaMDS(BiomassNMDS_data_filtered, trymax = 100, distance = "bray")
+
+# Look at most influential fish
+# Extract species scores from the NMDS
+species_scores <- scores(nmds_filtered, display = "species")
+
+# Calculate the distance of each species from the origin
+# This represents overall influence across both axes
+species_influence <- sqrt(rowSums(species_scores^2))
+
+# Create a data frame with species names and their influence
+species_importance <- data.frame(
+  Species = rownames(species_scores),
+  Influence = species_influence,
+  NMDS1 = species_scores[,1],
+  NMDS2 = species_scores[,2]
+)
+
+# Sort by influence (descending)
+species_importance <- species_importance[order(-species_importance$Influence), ]
+
+# View the top species (75% percentile)
+species_importance <- species_importance[!is.nan(species_importance$Influence), ]
+cutoff <- quantile(species_importance$Influence, 0.75)
+important_species <- species_importance[species_importance$Influence > cutoff, ]
+head(important_species, 20)
 
 ## Make vectors for the guilds, but exclude the three outliers
 ### Make species:guild frame, to look up which species belongs to which guild
@@ -2822,9 +2846,6 @@ guild_biomass_by_year <- biomass_with_yeargroup %>%
 
 ## Calculate envfit for each YearGroup
 vectors_all <- list()
-
-## outliers to exclude for vector calculation.
-exclude_samples <- c("191", "192", "175", "170", "163", "144", "88")
 guild_biomass_by_year$SampleID <- rownames(guild_biomass_by_year)
 BiomassNMDS_exclOUT$SampleID <- rownames(BiomassNMDS_exclOUT)
 
@@ -2877,7 +2898,7 @@ vectors_segments_sig <- subset(vectors_segments, pval < 0.05)
 ggplot(site.scores,aes(x = NMDS1, y = NMDS2)) +
   geom_point(size = 3, aes(colour = Patch.type)) +
   geom_text(
-    data = subset(site.scores, SampleID %in% c("191","192","175", "170","163", "144", "88")),
+    data = subset(site.scores, SampleID %in% c("193","175","170","144", "163", "88")),
     aes(label = SampleID),
     hjust = -0.2, fontface = "bold", size = 4
   ) +
@@ -2911,7 +2932,7 @@ ggplot(site.scores,aes(x = NMDS1, y = NMDS2)) +
 ```{r}
 # Start from full data and null out outliers for ellipse grouping
 data_ell <- site.scores
-data_ell$Patch.type[data_ell$SampleID %in% c("191","192","175", "170","163", "144", "88")] <- NA
+data_ell$Patch.type[data_ell$SampleID %in% c("193","175","170","144", "163", "88")] <- NA
 
 # Calculate ellipses separately for each YearGroup
 ellipse_df <- do.call(rbind, lapply(unique(data_ell$YearGroup), function(year) {
@@ -2946,7 +2967,7 @@ ellipse_df <- do.call(rbind, lapply(unique(data_ell$YearGroup), function(year) {
 outliers_by_year <- list(
   "2021-2022" = c("88"),
   "2023-2024" = character(0),  # no outliers in this year
-  "2025" = c("192","191","175","170","144", "163")
+  "2025" = c("193","175","170","144", "163")
 )
 
 # Get unique year groups from your data
@@ -2970,7 +2991,7 @@ create_facet_main <- function(year_group, outliers, show_y_label = TRUE, show_y_
   ellipse_year <- subset(ellipse_df, YearGroup == year_group)
   vectors_year <- subset(vectors_segments_sig, YearGroup == year_group)
   
-  vectorfactor <- 1
+  vectorfactor <- 0.20
   
   p <- ggplot(data_main, aes(x = NMDS1, y = NMDS2)) +
     geom_point(size = 3, aes(colour = Patch.type)) +
@@ -2986,7 +3007,7 @@ create_facet_main <- function(year_group, outliers, show_y_label = TRUE, show_y_
     ) +
     geom_text(
       data = vectors_year,
-      aes(x = xend * vectorfactor * 1.3, y = yend * vectorfactor * 1.3, label = Guild),
+      aes(x = xend * vectorfactor * 1.2, y = yend * vectorfactor * 1.2, label = Guild),
       colour = "red",
       hjust = 0.5,
       vjust = -0.5,
@@ -3125,7 +3146,7 @@ for(p in plots){
 }
 
 # Saving MSplot5, needs to be much higher
-# Save EMF
+## Save EMF
 ggsave(
     filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", paste0("MSplot5.emf")),
     plot     = MSplot5,
@@ -3133,7 +3154,7 @@ ggsave(
     width    = 7,
     height   = 12
   )
-# Save PNG
+## Save PNG
 ggsave(
     filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", paste0("MSplot5.png")),
     plot     = MSplot5,
@@ -3143,25 +3164,20 @@ ggsave(
   )
 
 # Saving nMDSplot1 (cowplot object) to same folders
-# EMF
+## EMF
 emf(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "nMDSplot1.emf"),
     width = 15, height = 5)
 print(nMDSplot1)
 dev.off()
 
-# PNG
+## PNG
 png(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot1.png"),
     width = 15, height = 5, units = "in", res = 600)
 print(nMDSplot1)
 dev.off()
 
-# # Richness, Abundance, Mean size, and Biomass combined in one panel
-# RAB1 plots - keep legends, remove titles, remove x-axis from top 3, add 10% y-expansion
-Rplot1_notitle <- Rplot1 + 
-  labs(title = NULL, subtitle = NULL, x = NULL) + 
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
-
+# Abundance, Mean size, and Biomass combined in one panel
+## AMSB1 plots - keep legends, remove titles, remove x-axis from top 3, add 10% y-expansion
 Aplot1_notitle <- Aplot1 + 
   labs(title = NULL, subtitle = NULL, x = NULL) + 
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
@@ -3176,13 +3192,7 @@ Bplot1_notitle <- Bplot1 +
   labs(title = NULL, subtitle = NULL) +
   scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
 
-# RAB2 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
-Rplot2_notitle_nolegend <- Rplot2 + 
-  labs(title = NULL, subtitle = NULL, x = NULL) + 
-  theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
-
+## AMSB2 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
 Aplot2_notitle_nolegend <- Aplot2 + 
   labs(title = NULL, subtitle = NULL, x = NULL) + 
   theme(legend.position = "none",
@@ -3201,13 +3211,7 @@ Bplot2_notitle_nolegend <- Bplot2 +
         axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
 
-# RAB3 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
-Rplot3_notitle_nolegend <- Rplot3 + 
-  labs(title = NULL, subtitle = NULL, x = NULL) + 
-  theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
-
+# AMSB3 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
 Aplot3_notitle_nolegend <- Aplot3 + 
   labs(title = NULL, subtitle = NULL, x = NULL) + 
   theme(legend.position = "none",
@@ -3227,60 +3231,60 @@ Bplot3_notitle_nolegend <- Bplot3 +
   scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
 
 # Extract legend from one of the plots (e.g., Rplot2_notitle)
-legend_shared <- get_legend(Rplot2_notitle)
+legend_shared <- get_legend(Aplot2_notitle_nolegend)
 
 # Combine plots 1
-RAMSB1 <- plot_grid(Rplot1_notitle, Aplot1_notitle, MSplot1_notitle, Bplot1_notitle, 
-                  nrow = 4, 
+AMSB1 <- plot_grid(Aplot1_notitle, MSplot1_notitle, Bplot1_notitle, 
+                  nrow = 3, 
                   align = "v", 
-                  rel_heights = c(1, 1, 1, 1.15),
-                  labels = c("A", "B", "C", "D"), 
+                  rel_heights = c(1, 1, 1.15),
+                  labels = c("A", "B", "C"), 
                   label_size = 18,
                   label_x = 0.00,
                   label_y = 1.0)
-print(RAMSB1)
+print(AMSB1)
 
 # Combine plots 2
-RAMSB2_plots <- plot_grid(Rplot2_notitle_nolegend, Aplot2_notitle_nolegend, MSplot2_notitle_nolegend, Bplot2_notitle_nolegend, 
-                  nrow = 4, 
+AMSB2_plots <- plot_grid(Aplot2_notitle_nolegend, MSplot2_notitle_nolegend, Bplot2_notitle_nolegend, 
+                  nrow = 3, 
                   align = "v", 
-                  rel_heights = c(1, 1, 1, 1.08),
-                  labels = c("A", "B", "C", "D"), 
+                  rel_heights = c(1, 1, 1.08),
+                  labels = c("A", "B", "C"), 
                   label_size = 18,
                   label_x = 0.00,
                   label_y = 1.0)
-RAMSB2 <- plot_grid(RAMSB2_plots, legend_shared, 
+AMSB2 <- plot_grid(AMSB2_plots, legend_shared, 
                   ncol = 2, 
                   rel_widths = c(1, 0.2))
-print(RAMSB2)
+print(AMSB2)
 
 # Combine plots 3
-RAMSB3_plots <- plot_grid(Rplot3_notitle_nolegend, Aplot3_notitle_nolegend, MSplot3_notitle_nolegend, Bplot3_notitle_nolegend, 
-                  nrow = 4, 
+AMSB3_plots <- plot_grid(Aplot3_notitle_nolegend, MSplot3_notitle_nolegend, Bplot3_notitle_nolegend, 
+                  nrow = 3, 
                   align = "v", 
-                  rel_heights = c(1, 1, 1, 1.08),
-                  labels = c("A", "B", "C", "D"), 
+                  rel_heights = c(1, 1, 1.08),
+                  labels = c("A", "B", "C"), 
                   label_size = 18,
                   label_x = 0.00,
                   label_y = 1.0)
-RAMSB3 <- plot_grid(RAMSB3_plots, legend_shared, 
+AMSB3 <- plot_grid(AMSB3_plots, legend_shared, 
                   ncol = 2, 
                   rel_widths = c(1, 0.2))
-print(RAMSB3)
+print(AMSB3)
 
 # Save them
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time.png"), 
-       RAMSB1, width = 18, height = 32, units = "cm", dpi = 600)
+       AMSB1, width = 18, height = 25, units = "cm", dpi = 600)
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time.emf"), 
-       RAMSB1, width = 18, height = 32, units = "cm", device = "emf")
+       AMSB1, width = 18, height = 25, units = "cm", device = "emf")
 
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_guild.png"), 
-       RAMSB2, width = 20, height = 32, units = "cm", dpi = 600)
+       AMSB2, width = 20, height = 25, units = "cm", dpi = 600)
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_guild.emf"), 
-       RAMSB2, width = 20, height = 32, units = "cm", device = "emf")
+       AMSB2, width = 20, height = 25, units = "cm", device = "emf")
 
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_patch.png"), 
-       RAMSB3, width = 20, height = 32, units = "cm", dpi = 600)
+       AMSB3, width = 20, height = 25, units = "cm", dpi = 600)
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_patch.emf"), 
-       RAMSB3, width = 20, height = 32, units = "cm", device = "emf")
+       AMSB3, width = 20, height = 25, units = "cm", device = "emf")
 ```
