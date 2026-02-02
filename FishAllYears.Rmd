@@ -1,7 +1,7 @@
 =======
 title: Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size
 author: Jorn de Gelder
-date: 22/12/2025
+date: 2/2/2026
 ---
 
 # if on MSI laptop (Jorn)
@@ -9,10 +9,9 @@ setwd("C:/Users/Jorn de Gelder/Documents/Thesis R")
 
 # Setup
 ```{r setup}
-rm(list=ls()) # Clear1 workspace
+rm(list=ls()) # Clear workspace
 knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
 options(scipen = 99) # Have all numbers in non-scientific notation
-
 
 library(readxl) # Join data frames (vlookup)
 library(cowplot) # Combine plots
@@ -974,8 +973,8 @@ Rplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
   geom_text(aes(label = .group, y = asymp.UCL), 
             vjust = -0.5, 
             size = 3) +
-  labs(x = "Year Group", y = "Herbivore species richness",
-      title = "Mean herbivore species richness per survey over time",
+  labs(x = "Year Group", y = "Species richness (S)",
+      title = "Herbivore species richness per survey over time",
       subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
   theme_minimal(base_size = 12) +
   theme_bw()
@@ -991,8 +990,7 @@ Rplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, color = YearGroup, gr
             vjust = -0.5,
             size = 3,
             show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = "Herbivore species richness", color = "Year Group",
-       title = "Mean herbivore species richness per survey over time, by guild") +
+  labs(x = "Herbivore guild", y = "Species richness (S)", color = "Year Group") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
@@ -1007,8 +1005,7 @@ Rplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, color = YearGro
             vjust = -0.5,
             size = 3,
             show.legend = FALSE) +
-  labs(x = "Patch Type", y = "Herbivore species richness", color = "Year Group",
-       title = "Mean herbivore species richness per survey over time, by patch type") +
+  labs(x = "Patch type", y = "Species richness (S)", color = "Year Group") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
@@ -1311,7 +1308,7 @@ Anova(BmodelLoglink1) #<- Reef_distance is significant
 summary(BmodelLoglink4)$coefficients$cond #<- Coefficient of Reefdistance is small, but has an influence: keeping
 Anova(BmodelLoglink4) # Patch.type and DietH are significant, YearGroup and interaction aren't.
 Anova(BmodelLoglink6) # Now DietH, Patch.type and the interaction YearGroup:DietH are significant.
-Anova(BmodelLoglink7) # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
+Anova(BmodelLoglink7) # YearGroup:DietH is significant, YearGroup:Patch.type isn't.
  
 # Normality & homoscedasticity for DHARMa
 Bsim_resLoglink4 <- simulateResiduals(fittedModel = BmodelLoglink4, re.form = NULL)
@@ -1337,9 +1334,9 @@ cld_diet <- cld(emm_diet, by = "DietH", Letters = letters)
 emm_diet_df <- as.data.frame(cld_diet)
 emm_diet_df$.group <- trimws(emm_diet_df$.group)
 
-# 3. YearGroup:Patch.type interaction
-emm_patch <- emmeans(BmodelLoglink7, ~ YearGroup * Patch.type, type = "response")
-cld_patch <- cld(emm_patch, by = "Patch.type", Letters = letters)
+# 3. Patch.type main effect
+emm_patch <- emmeans(BmodelLoglink7, ~ Patch.type, type = "response")
+cld_patch <- cld(emm_patch, Letters = letters)
 emm_patch_df <- as.data.frame(cld_patch)
 emm_patch_df$.group <- trimws(emm_patch_df$.group)
 
@@ -1350,9 +1347,9 @@ Bplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
                 width = 0.2) +
   geom_text(aes(label = .group, y = asymp.UCL), 
             vjust = -0.5, 
-            size = 3) +
-  labs(x = "Year Group", y = "Herbivore biomass (kg/ha)",
-       title = "Mean herbivore biomass per survey over time",
+            size = 4.2) +
+  labs(x = "Year Group",  y = expression(Biomass ~ (kg ~ ha^-1)),
+       title = "Mean herbivore biomass over time",
       subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
   theme_minimal(base_size = 12) +
   theme_bw()
@@ -1366,15 +1363,15 @@ Bplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, color = YearGroup, gr
   geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 5,
             show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = "Herbivore biomass (kg/ha)", color = "Year Group",
-       title = "Mean herbivore biomass per survey over time, by guild") +
+  labs(x = "Herbivore guild", y = expression(Biomass ~ (kg ~ ha^-1)), color = "Year Group",
+       title = "Mean herbivore biomass over time, by guild") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
-# Plot 3: Yeargroup x patch.type interaction
-Bplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, color = YearGroup, group = YearGroup)) +
+# Plot 3: Patch.type main effect
+Bplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
@@ -1382,10 +1379,10 @@ Bplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, color = YearGro
   geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 4.5,
             show.legend = FALSE) +
-  labs(x = "Patch Type", y = "Herbivore biomass (kg/ha)", color = "Year Group",
-       title = "Mean herbivore biomass per survey over time, by patch type") +
+  labs(x = "Patch type", y = expression(Biomass ~ (kg ~ ha^-1)) ,
+       title = "Mean herbivore biomass by patch type") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
@@ -1414,21 +1411,13 @@ posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.va
 print("Significant comparisons:")
 print(posthoc_diet_between_sig)
 
-print("=== Plot 3: YearGroup comparisons within each Patch type ===")
-posthoc_patch_within <- pairs(emm_patch, by = "Patch.type")
-# print(posthoc_patch_within)
-posthoc_patch_within_df <- as.data.frame(posthoc_patch_within)
-posthoc_patch_within_sig <- posthoc_patch_within_df[posthoc_patch_within_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_patch_within_sig)
-
-print("=== Plot 3: Patch type comparisons within each YearGroup ===")
-posthoc_patch_between <- pairs(emm_patch, by = "YearGroup")
+print("=== Plot 3: Patch type comparisons ===")
+posthoc_patch <- pairs(emm_patch)
 # print(posthoc_patch_between)
-posthoc_patch_between_df <- as.data.frame(posthoc_patch_between)
-posthoc_patch_between_sig <- posthoc_patch_between_df[posthoc_patch_between_df$p.value < 0.05, ]
+posthoc_patch_df <- as.data.frame(posthoc_patch_between)
+posthoc_patch_sig <- posthoc_patch_between_df[posthoc_patch_between_df$p.value < 0.05, ]
 print("Significant comparisons:")
-print(posthoc_patch_between_sig)
+print(posthoc_patch_sig)
 
 # Display plots
 print(Bplot1)
@@ -1721,13 +1710,13 @@ MSmodelLoglink3 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance + ARdistanc
 MSmodelLoglink5 <- glmmTMB(GuildMeansize ~ YearGroup * Patch.type * DietH  + Reefdistance + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
  
 # Version 7: v6 but with just a two-way interaction: YearGroup * DietH
-MSmodelLoglink6 <- glmmTMB(GuildMeansize ~ YearGroup * DietH + Patch.type + Reefdistance + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
+MSmodelLoglink6 <- glmmTMB(GuildMeansize ~ YearGroup * DietH + YearGroup * Patch.type + Reefdistance + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
 
 # Look at model
 Anova(MSmodelLoglink3) # Depth & ARdistance are insignificant
 summary(MSmodelLoglink3)$coefficients$cond # Reefdistance has a small effect, but proportionally comparable some DietH / Year effects > include
 Anova(MSmodelLoglink5) # Here, three way-interaction is significant
-Anova(MSmodelLoglink6) # # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
+Anova(MSmodelLoglink6) # # YearGroup:DietH is significant. Also consider standalone YearGroup plot.
  
 # Normality & homoscedasticity for DHARMa
 MSsim_resLoglink5 <- simulateResiduals(fittedModel = MSmodelLoglink5, re.form = NULL)
@@ -1751,8 +1740,8 @@ MSplot1 <- ggplot(emm1_df, aes(x = YearGroup, y = response)) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.2) +
   geom_point(size = 3) +
   geom_text(aes(label = .group, y = asymp.UCL), vjust = -0.5, size = 4) +
-  labs(x = "Year Group", y = "Mean Size (cm)",
-       title = "Mean herbivore fish size per survey over time",
+  labs(x = "Year Group", y = "Mean size (cm)",
+       title = "Mean herbivore fish size over time",
       subtitle = "Main effect (YearGroup × Guild × Patch.type interaction significant)") +
   theme_bw()
 
@@ -1773,11 +1762,11 @@ MSplot2 <- ggplot(emm2_df, aes(x = DietH, y = response, color = YearGroup, group
   geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 5,
             show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = "Mean Size (cm)",
+  labs(x = "Herbivore guild", y = "Mean size (cm)",
        color = "Year Group",
-       title = "Mean herbivore fish size per survey over time, by guild",
+       title = "Mean herbivore fish size over time, by guild",
       subtitle = "Averaged over Patch.type (YearGroup × Guild × Patch.type interaction significant)") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -1793,8 +1782,8 @@ MSplot3 <- ggplot(emm3_df, aes(x = Patch.type, y = response)) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.2) +
   geom_point(size = 3) +
   geom_text(aes(label = .group, y = asymp.UCL), vjust = -0.5, size = 4) +
-  labs(x = "Patch Type", y = "Mean Size (cm)",
-       title = "Mean herbivore fish size per survey by patch type",
+  labs(x = "Patch type", y = "Mean size (cm)",
+       title = "Mean herbivore fish size by patch type",
         subtitle = "Main effect (YearGroup × Guild × Patch.type interaction significant)") +
   theme_bw()
 
@@ -1884,9 +1873,8 @@ MSplot5 <- ggplot(emm5_df, aes(x = DietH, y = response,
             vjust = -0.5, size = 3, show.legend = FALSE) +
   facet_wrap(~ Patch.type, ncol = 1, scales = "free_y") +
   scale_y_continuous(limits = c(0, NA), expand = expansion(add = c(0, 5))) +
-  labs(x = "Diet", y = "Mean Size (cm)", 
-       title = "Mean herbivore fish size per survey over time, by guild and by patch type",
-       color = "Year Group") +
+  labs(x = "Herbivore guild", y = "Mean size (cm)",
+       color = "Year group") +
   theme_bw() +
   theme(strip.text = element_text(face = "plain"),
         strip.background = element_blank())  # Remove grey background from facet labels
@@ -1909,16 +1897,16 @@ all_combos <- expand_grid(
   SurveyNo = unique(Abundance$SurveyNo),
   DietH = unique(Abundance$DietH))
 
-# Go from abundance to species Abundance, and bring back 0 values for groups without observations
+# Sum abundances per guild
 ## First store metadata
 survey_meta <- Abundance %>%
   dplyr::select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
   distinct()
 
-## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
+## Sum abundance per guild
 Abundance <- Abundance %>%
   group_by(SurveyNo, DietH) %>%
-  summarise(GuildAbundance = sum(Abundance),
+  summarise(GuildAbundance_m2 = sum(Abundance_m2),
             .groups = "drop") %>%
   right_join(all_combos, by = c("SurveyNo", "DietH")) 
 
@@ -1932,15 +1920,16 @@ rm(survey_meta, all_combos)
 # Add the different guilds together per survey
 Abundance_combined <- Abundance %>%
   group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
-  summarise (Abundance = sum(GuildAbundance))
+  summarise (Abundance_m2 = sum(GuildAbundance_m2))
 
 # Correlation between reef depth and abundance
-plot(Abundance_combined$Depth.MLLW, Abundance_combined$Abundance, xlab = "Depth", ylab = "Abundance",ylim = c(0,150), main = "Herbivore abundance vs Depth (covariate)")
-abline(lm(Abundance ~ Depth.MLLW, data = Abundance_combined))
-sum_lm <- summary (lm(Abundance ~ Depth.MLLW, data = Abundance_combined))
+par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
+plot(Abundance_combined$Depth.MLLW, Abundance_combined$Abundance_m2, xlab = "Depth", ylab = expression(Fish ~ abundance ~ (m^-2)), main = "Herbivore abundance vs Depth (covariate)")
+abline(lm(Abundance_m2 ~ Depth.MLLW, data = Abundance_combined))
+sum_lm <- summary (lm(Abundance_m2 ~ Depth.MLLW, data = Abundance_combined))
 coef_lm <- sum_lm$coefficients
 text(x = 7,
-     y = 120,
+     y = 1,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -1957,12 +1946,13 @@ text(x = 7,
 
 # Correlation between distance from natural reef and abundance
 Abundance_noREF <- Abundance_combined[Abundance_combined$Treatment != "Reference",] 
-plot(Abundance_noREF$Reef.dist_m, Abundance_noREF$Abundance, xlab = "Reef distance", ylab = "Abundance", ylim = c(0,50),main = "Herbivore abundance vs distance from natural reef (covariate)")
-abline(lm(Abundance ~ Reef.dist_m, data = Abundance_noREF))
-sum_lm <- summary (lm(Abundance ~ Reef.dist_m, data = Abundance_noREF))
+par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
+plot(Abundance_noREF$Reef.dist_m, Abundance_noREF$Abundance_m2, xlab = "Reef distance", ylab = expression(Fish ~ abundance ~ (m^-2)), ylim = c(0,0.3), main = "Herbivore abundance vs distance from natural reef (covariate)")
+abline(lm(Abundance_m2 ~ Reef.dist_m, data = Abundance_noREF))
+sum_lm <- summary (lm(Abundance_m2 ~ Reef.dist_m, data = Abundance_noREF))
 coef_lm <- sum_lm$coefficients
 text(x = 23,
-     y = 35,
+     y = 0.20,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -1979,12 +1969,13 @@ text(x = 23,
 
 # Correlation between distance from another AR and species Abundance
 Abundance_ARonly <- Abundance_combined[Abundance_combined$Treatment == "AR",] 
-plot(Abundance_ARonly$AR.dist_m, Abundance_ARonly$Abundance, xlab = "AR distance", ylab = "Abundance", ylim = c(0,50), main = "Herbivore abundance vs distance from another artifical reef (covariate)")
-abline(lm(Abundance ~ AR.dist_m, data = Abundance_ARonly))
-sum_lm <- summary (lm(Abundance ~ AR.dist_m, data = Abundance_ARonly))
+par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
+plot(Abundance_ARonly$AR.dist_m, Abundance_ARonly$Abundance_m2, xlab = "AR distance", ylab = expression(Fish ~ abundance ~ (m^-2)), ylim = c(0,0.2), main = "Herbivore abundance vs distance from another artifical reef (covariate)")
+abline(lm(Abundance_m2 ~ AR.dist_m, data = Abundance_ARonly))
+sum_lm <- summary (lm(Abundance_m2 ~ AR.dist_m, data = Abundance_ARonly))
 coef_lm <- sum_lm$coefficients
 text(x = 23,
-     y = 35,
+     y = 0.15,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -2006,14 +1997,14 @@ rm(sum_lm)
 ```
 ## Statistical models
 ```{r}
-# Version 1: Negative binomial to test Reef.dist and AR dist significance among AR
-AmodelNB1 <- glmmTMB(GuildAbundance ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = nbinom2)
+# Version 1: Log-link to test Reef.dist and AR dist significance among AR
+AmodelNB1 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"))
 
 # Version 6: Distances omitted; they are insignificant and the effect size is too small to be interesting
-AmodelNB6 <- glmmTMB(GuildAbundance ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = nbinom2, dispformula = ~ Patch.type + DietH)
+AmodelNB6 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"), dispformula = ~ DietH)
 
-# Version 6: Distances omitted; they are insignificant and the effect size is too small to be interesting
-AmodelNB7 <- glmmTMB(GuildAbundance ~ Depth.MLLW + YearGroup * Patch.type + YearGroup * DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = nbinom2, dispformula = ~ Patch.type + DietH)
+# Version 7
+AmodelNB7 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + YearGroup * Patch.type + YearGroup * DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"), dispformula = ~ DietH)
 
 # Look at model
 Anova(AmodelNB1) # ARdist is significant, REEFdist isn't
@@ -2025,7 +2016,7 @@ Anova(AmodelNB7) # YearGroup:DietH & YearGroup:Patch.type are significant. Also 
 Asim_resNB6 <- simulateResiduals(fittedModel = AmodelNB6, re.form = NULL)
 Asim_resNB7 <- simulateResiduals(fittedModel = AmodelNB7, re.form = NULL)
 
-plot(Asim_resNB6)
+# plot(Asim_resNB6)
 plot(Asim_resNB7)
 ```
 ## Plots and post-hoc
@@ -2055,42 +2046,42 @@ Aplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
                 width = 0.2) +
   geom_text(aes(label = .group, y = asymp.UCL), 
             vjust = -0.5, 
-            size = 3) +
-  labs(x = "Year Group", y = "Herbivore fish abundance",
-       title = "Herbivore fish abundance per survey over time",
+            size = 4) +
+  labs(x = "Year Group", y = expression(Fish ~ abundance ~ (m^-2)),
+       title = "Herbivore fish abundance over time",
       subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
 # Plot 2: Yeargroup x DietH interaction
-Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, color = YearGroup, group = YearGroup)) +
+Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response*100, color = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL),
+  geom_text(aes(label = .group, y = asymp.UCL*100),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 5,
             show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = "Herbivore fish abundance", color = "Year Group",
-       title = "Herbivore fish abundance per survey over time, by guild") +
+  labs(x = "Herbivore guild", y = expression(Abundance ~ (m^-2 ~ x ~ 100)), color = "Year Group",
+       title = "Herbivore fish abundance over time, by guild") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
 # Plot 3: Yeargroup x Patch.type interaction
-Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, color = YearGroup, group = YearGroup)) +
+Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response*100, color = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL),
+  geom_text(aes(label = .group, y = asymp.UCL*100),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 4.5,
             show.legend = FALSE) +
-  labs(x = "Patch Type", y = "Herbivore fish abundance", color = "Year Group",
-       title = "Herbivore fish abundance per survey over time, by patch type") +
+  labs(x = "Patch type", y = expression(Abundance ~ (m^-2 ~ x ~ 100)), color = "Year Group",
+       title = "Herbivore fish abundance over time, by patch type") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
@@ -2979,8 +2970,8 @@ data_no_outliers <- subset(site.scores, !(SampleID %in% all_outliers))
 nmds1_range <- range(data_no_outliers$NMDS1)
 nmds2_range <- range(data_no_outliers$NMDS2)
 # Add some padding
-nmds1_limits <- nmds1_range + c(-0.1, 0.1) * diff(nmds1_range)
-nmds2_limits <- nmds2_range + c(-0.1, 0.1) * diff(nmds2_range)
+nmds1_limits <- nmds1_range + c(-0.05, 0.05) * diff(nmds1_range)
+nmds2_limits <- nmds2_range + c(-0.05, 0.05) * diff(nmds2_range)
 
 # Function to create main plot for one YearGroup
 create_facet_main <- function(year_group, outliers, show_y_label = TRUE, show_y_text = TRUE, show_x_label = FALSE) {
@@ -2991,7 +2982,7 @@ create_facet_main <- function(year_group, outliers, show_y_label = TRUE, show_y_
   ellipse_year <- subset(ellipse_df, YearGroup == year_group)
   vectors_year <- subset(vectors_segments_sig, YearGroup == year_group)
   
-  vectorfactor <- 0.20
+  vectorfactor <- 0.25
   
   p <- ggplot(data_main, aes(x = NMDS1, y = NMDS2)) +
     geom_point(size = 3, aes(colour = Patch.type)) +
@@ -3007,25 +2998,25 @@ create_facet_main <- function(year_group, outliers, show_y_label = TRUE, show_y_
     ) +
     geom_text(
       data = vectors_year,
-      aes(x = xend * vectorfactor * 1.2, y = yend * vectorfactor * 1.2, label = Guild),
+      aes(x = xend * vectorfactor * 1.2 , y = yend * vectorfactor * 1.2 - 0.02, label = Guild),
       colour = "red",
       hjust = 0.5,
       vjust = -0.5,
       inherit.aes = FALSE,
-      size = 3.5
+      size = 5
     ) +
     coord_cartesian(xlim = nmds1_limits, ylim = nmds2_limits) +
     ggtitle(year_group) +
     theme(
-      axis.text.x = element_text(size = 12, colour = "black"),
-      axis.text.y = if(show_y_text) element_text(size = 12, colour = "black") else element_blank(),
-      axis.ticks.y = if(show_y_text) element_line() else element_blank(),  # Hide y-axis ticks
-      axis.title.x = if(show_x_label) element_text(size = 14) else element_text(size = 14, colour = "white"),  # Invisible but preserves space
-      axis.title.y = if(show_y_label) element_text(size = 14) else element_blank(),
+      axis.text.x = element_text(size = 16, colour = "black"),
+      axis.text.y = if(show_y_text) element_text(size = 16, colour = "black") else element_blank(),
+      axis.ticks.y = if(show_y_text) element_line() else element_blank(),
+      axis.title.x = element_text(size = 20, colour = if(show_x_label) "black" else "white"),  # Fixed: same size, different color
+      axis.title.y = if(show_y_label) element_text(size = 20) else element_blank(),
       legend.position = "none",
       panel.background = element_blank(),
       panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2),
-      plot.title = element_text(hjust = 0.5, size = 12, face = "bold")
+      plot.title = element_text(hjust = 0.5, size = 20, face = "plain")
     ) +
     labs(x = if(show_x_label) "NMDS1" else "NMDS1",  # Always set label
          y = if(show_y_label) "NMDS2" else "",
@@ -3054,11 +3045,12 @@ create_facet_inset <- function(year_group, outliers) {
     geom_point(size = 1.5, aes(colour = InsetColor)) +
     scale_colour_manual(values = inset_colors) +
     scale_x_continuous(breaks = scales::breaks_pretty(n = 3)) +
+    scale_y_continuous(breaks = scales::breaks_pretty(n = 3)) +
     theme_minimal() +
     theme(
       legend.position = "none",
       axis.title = element_blank(),  # No axis titles
-      axis.text = element_text(size = 8, colour = "black"),  # Show axis values
+      axis.text = element_text(size = 12, colour = "black"),  # Show axis values
       panel.grid = element_blank(),
       panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8)
     )
@@ -3081,7 +3073,7 @@ plots_list <- lapply(seq_along(year_groups), function(i) {
     # Overlay inset on top-left, shifted right to avoid y-axis
     ggdraw() +
       draw_plot(main) +
-      draw_plot(inset, x = 0.72, y = 0.68, width = 0.25, height = 0.25)
+      draw_plot(inset, x = 0.72, y = 0.65, width = 0.25, height = 0.25)
   } else {
     # No inset, just main plot
     main
@@ -3093,23 +3085,28 @@ legend_plot <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2, colour = Patch.type
   geom_point(size = 3, aes(colour = Patch.type)) +
   geom_polygon(data = ellipse_df, aes(x = NMDS1, y = NMDS2, fill = Patch.type),
                alpha = 0.40, colour = NA) +
-  scale_colour_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0")) +
-  scale_fill_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0")) +
-  theme(legend.text = element_text(size = 12),
-        legend.title = element_text(size = 14),
-        legend.key = element_rect(fill = "white", colour = NA))
+  scale_colour_manual(name = "Patch type", values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0")) +
+  scale_fill_manual(name = "Patch type", values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0")) +
+  guides(colour = guide_legend(nrow = 1),  # Force into 1 row
+         fill = guide_legend(nrow = 1)) +   # Force into 1 row
+  theme(legend.text = element_text(size = 20),
+        legend.title = element_text(size = 20),
+        legend.key = element_rect(fill = "white", colour = NA),
+        legend.position = "top",
+        legend.direction = "horizontal",
+        legend.spacing.x = unit(0.5, "cm"))
 
-# Extract legend as a grob
+# Extract legend from legend_plot (not from plots_list[[1]])
 legend <- get_legend(legend_plot)
 
-# Combine: 3 plots + legend using plot_grid from cowplot
+# Then arrange with legend on top
 nMDSplot1 <- plot_grid(
-  plots_list[[1]], 
-  plots_list[[2]], 
-  plots_list[[3]], 
   legend,
-  nrow = 1,
-  rel_widths = c(1.09, 1, 1, 0.3)
+  plot_grid(plots_list[[1]], plots_list[[2]], plots_list[[3]], 
+            nrow = 1,
+            rel_widths = c(1.09, 1, 1)),
+  nrow = 2,
+  rel_heights = c(0.15, 1)  # Increased legend height slightly
 )
 
 nMDSplot1
@@ -3129,7 +3126,7 @@ for(p in plots){
   
   # Save EMF
   ggsave(
-    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", paste0(p, ".emf")),
+    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/Noncombined_emf", paste0(p, ".emf")),
     plot     = plot_obj,
     device   = "emf",
     width    = 7,
@@ -3137,7 +3134,7 @@ for(p in plots){
   )
   # Save PNG
   ggsave(
-    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", paste0(p, ".png")),
+    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/Noncombined_png", paste0(p, ".png")),
     plot     = plot_obj,
     width    = 7,
     height   = 5,
@@ -3145,7 +3142,7 @@ for(p in plots){
   )
 }
 
-# Saving MSplot5, needs to be much higher
+# Saving MSplot5
 ## Save EMF
 ggsave(
     filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", paste0("MSplot5.emf")),
@@ -3176,73 +3173,93 @@ png(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Resear
 print(nMDSplot1)
 dev.off()
 
+## Tiff
+tiff(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "nMDSplot1.tiff"),
+     width = 16, height = 6, units = "in", res = 600, compression = "lzw")
+print(nMDSplot1)
+dev.off()
+
 # Abundance, Mean size, and Biomass combined in one panel
 ## AMSB1 plots - keep legends, remove titles, remove x-axis from top 3, add 10% y-expansion
-Aplot1_notitle <- Aplot1 + 
-  labs(title = NULL, subtitle = NULL, x = NULL) + 
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
-
-MSplot1_notitle <- MSplot1 + 
-  labs(title = NULL, subtitle = NULL, x = NULL) + 
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
-
-Bplot1_notitle <- Bplot1 + 
-  labs(title = NULL, subtitle = NULL) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+# Aplot1_notitle <- Aplot1 + 
+#   labs(title = NULL, subtitle = NULL, x = NULL) + 
+#   theme(axis.text.x = element_blank(), 
+#         axis.ticks.x = element_blank(),
+#         axis.text.y = element_text(size = 9, colour = "black")) +
+#   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2)))
+# 
+# MSplot1_notitle <- MSplot1 + 
+#   labs(title = NULL, subtitle = NULL, x = NULL) + 
+#   theme(axis.text.x = element_blank(), 
+#         axis.ticks.x = element_blank(),
+#         axis.text.y = element_text(size = 9, colour = "black")) +
+#   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2)))
+# 
+# Bplot1_notitle <- Bplot1 + 
+#   labs(title = NULL, subtitle = NULL) +
+#   theme(axis.text.x = element_text(size = 9, colour = "black"),
+#         axis.text.y = element_text(size = 9, colour = "black")) +
+#   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2)))
 
 ## AMSB2 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
 Aplot2_notitle_nolegend <- Aplot2 + 
   labs(title = NULL, subtitle = NULL, x = NULL) + 
   theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+        axis.text.x = element_text(size = 10, colour = "black", angle = 0, hjust = 0.5),
+        axis.text.y = element_text(size = 10, colour = "black")) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
 
 MSplot2_notitle_nolegend <- MSplot2 + 
   labs(title = NULL, subtitle = NULL, x = NULL) + 
   theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+        axis.text.x = element_text(size = 10, colour = "black", angle = 0, hjust = 0.5),
+        axis.text.y = element_text(size = 10, colour = "black")) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
 
 Bplot2_notitle_nolegend <- Bplot2 + 
   labs(title = NULL, subtitle = NULL) +
   theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+        axis.text.x = element_text(size = 10, colour = "black",angle = 0, hjust = 0.5),
+        axis.text.y = element_text(size = 10, colour = "black")) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
 
 # AMSB3 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
 Aplot3_notitle_nolegend <- Aplot3 + 
   labs(title = NULL, subtitle = NULL, x = NULL) + 
   theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+        axis.text.x = element_text(size = 10, colour = "black", angle = 0, hjust = 0.5),
+        axis.text.y = element_text(size = 10, colour = "black")) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
 
 MSplot3_notitle_nolegend <- MSplot3 + 
   labs(title = NULL, subtitle = NULL, x = NULL) + 
   theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+        axis.text.x = element_text(size = 10, colour = "black", angle = 0, hjust = 0.5),
+        axis.text.y = element_text(size = 10, colour = "black")) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
 
 Bplot3_notitle_nolegend <- Bplot3 + 
   labs(title = NULL, subtitle = NULL) +
   theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_y_continuous(expand = expansion(mult = c(0.1, 0.1)))
+        axis.text.x = element_text(size = 10, colour = "black", angle = 0, hjust = 0.5),
+        axis.text.y = element_text(size = 10, colour = "black")) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
 
 # Extract legend from one of the plots (e.g., Rplot2_notitle)
-legend_shared <- get_legend(Aplot2_notitle_nolegend)
+legend_shared <- get_legend( Aplot2 + theme(legend.position = "top", 
+          legend.direction = "horizontal",
+          legend.spacing.x = unit(1, "cm")))
 
-# Combine plots 1
-AMSB1 <- plot_grid(Aplot1_notitle, MSplot1_notitle, Bplot1_notitle, 
-                  nrow = 3, 
-                  align = "v", 
-                  rel_heights = c(1, 1, 1.15),
-                  labels = c("A", "B", "C"), 
-                  label_size = 18,
-                  label_x = 0.00,
-                  label_y = 1.0)
-print(AMSB1)
+# # Combine plots 1
+# AMSB1 <- plot_grid(Aplot1_notitle, MSplot1_notitle, Bplot1_notitle, 
+#                   nrow = 3, 
+#                   align = "v", 
+#                   rel_heights = c(1, 1, 1.15),
+#                   labels = c("A", "B", "C"), 
+#                   label_size = 18,
+#                   label_x = 0.1,
+#                   label_y = 1.0)
+# print(AMSB1)
 
 # Combine plots 2
 AMSB2_plots <- plot_grid(Aplot2_notitle_nolegend, MSplot2_notitle_nolegend, Bplot2_notitle_nolegend, 
@@ -3253,9 +3270,9 @@ AMSB2_plots <- plot_grid(Aplot2_notitle_nolegend, MSplot2_notitle_nolegend, Bplo
                   label_size = 18,
                   label_x = 0.00,
                   label_y = 1.0)
-AMSB2 <- plot_grid(AMSB2_plots, legend_shared, 
-                  ncol = 2, 
-                  rel_widths = c(1, 0.2))
+AMSB2 <- plot_grid(legend_shared, AMSB2_plots,
+                  nrow = 2, 
+                  rel_heights = c(0.05, 1))  
 print(AMSB2)
 
 # Combine plots 3
@@ -3267,24 +3284,38 @@ AMSB3_plots <- plot_grid(Aplot3_notitle_nolegend, MSplot3_notitle_nolegend, Bplo
                   label_size = 18,
                   label_x = 0.00,
                   label_y = 1.0)
-AMSB3 <- plot_grid(AMSB3_plots, legend_shared, 
-                  ncol = 2, 
-                  rel_widths = c(1, 0.2))
+AMSB3 <- plot_grid(legend_shared, AMSB3_plots,
+                  nrow = 2, 
+                  rel_heights = c(0.05, 1))  
 print(AMSB3)
 
 # Save them
-ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time.png"), 
-       AMSB1, width = 18, height = 25, units = "cm", dpi = 600)
-ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time.emf"), 
-       AMSB1, width = 18, height = 25, units = "cm", device = "emf")
+# ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time.png"), 
+#        AMSB1, width = 8, height = 14, units = "cm", dpi = 600)
+# ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time.emf"), 
+#        AMSB1, width = 8, height = 14, units = "cm", device = "emf")
 
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_guild.png"), 
-       AMSB2, width = 20, height = 25, units = "cm", dpi = 600)
+       AMSB2, width = 21, height = 25, units = "cm", dpi = 600)
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_guild.emf"), 
-       AMSB2, width = 20, height = 25, units = "cm", device = "emf")
+       AMSB2, width = 21, height = 25, units = "cm", device = "emf")
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_guild.tiff"),
+       AMSB2, 
+       width = 16, 
+       height = 20, 
+       units = "cm", 
+       dpi = 600,
+       compression = "lzw")
 
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_patch.png"), 
-       AMSB3, width = 20, height = 25, units = "cm", dpi = 600)
+       AMSB3, width = 21, height = 25, units = "cm", dpi = 600)
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_patch.emf"), 
-       AMSB3, width = 20, height = 25, units = "cm", device = "emf")
+       AMSB3, width = 21, height = 25, units = "cm", device = "emf")
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_patch.tiff"),
+       AMSB3, 
+       width = 16, 
+       height = 20, 
+       units = "cm", 
+       dpi = 600,
+       compression = "lzw")
 ```
