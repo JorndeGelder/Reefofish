@@ -801,50 +801,50 @@ aggregate(Radius ~ YearGroup, data = fish_unique,
 ```{r}
 fish <- read_parquet("Fish_Clean.parquet")
 ```
-# Species richness
+# Abundance
 ```{r}
 # ---- DATA PREP ----
-# Remove rows with non-herbivorous fish, and drop the "Other" level
-Richness <- fish[fish$DietH != "Other",]
-Richness <- droplevels(Richness)
+# Remove rows with non-herbivorous fish, and non-instantaneous observations
+Abundance <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
+Abundance <- droplevels(Abundance)
 
 all_combos <- expand_grid(
-  SurveyNo = unique(Richness$SurveyNo),
-  DietH = unique(Richness$DietH))
+  SurveyNo = unique(Abundance$SurveyNo),
+  DietH = unique(Abundance$DietH))
 
-# Go from abundance to species richness, and bring back 0 values for groups without observations
+# Sum abundances per guild
 ## First store metadata
-survey_meta <- Richness %>%
+survey_meta <- Abundance %>%
   dplyr::select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
   distinct()
 
-## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
-Richness <- Richness %>%
+## Sum abundance per guild
+Abundance <- Abundance %>%
   group_by(SurveyNo, DietH) %>%
-  summarise(GuildRichness = n_distinct(Species[Abundance > 0]),
+  summarise(GuildAbundance_m2 = sum(Abundance_m2),
             .groups = "drop") %>%
   right_join(all_combos, by = c("SurveyNo", "DietH")) 
 
 ## Bring back metadata lost in group_by
-Richness <- Richness %>%
+Abundance <- Abundance %>%
   left_join(survey_meta, by = "SurveyNo")
 rm(survey_meta, all_combos)
-
 ```
 ## Pre-model plots
 ```{r}
 # Add the different guilds together per survey
-Richness_combined <- Richness %>%
+Abundance_combined <- Abundance %>%
   group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
-  summarise (Richness = sum(GuildRichness))
+  summarise (Abundance_m2 = sum(GuildAbundance_m2))
 
-# Correlation between reef depth and species richness
-plot(Richness_combined$Depth.MLLW, Richness_combined$Richness, xlab = "Depth", ylab = "Species richness", main = "Herbivore species richness vs Depth (covariate)")
-abline(lm(Richness ~ Depth.MLLW, data = Richness_combined))
-sum_lm <- summary (lm(Richness ~ Depth.MLLW, data = Richness_combined))
+# Correlation between reef depth and abundance
+par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
+plot(Abundance_combined$Depth.MLLW, Abundance_combined$Abundance_m2, xlab = "Depth", ylab = expression(Fish ~ abundance ~ (m^-2)), main = "Herbivore abundance vs Depth (covariate)")
+abline(lm(Abundance_m2 ~ Depth.MLLW, data = Abundance_combined))
+sum_lm <- summary (lm(Abundance_m2 ~ Depth.MLLW, data = Abundance_combined))
 coef_lm <- sum_lm$coefficients
 text(x = 7,
-     y = 10,
+     y = 1,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -859,14 +859,15 @@ text(x = 7,
                      round(coef_lm[1,1],2)),
      pos = 4)
 
-# Correlation between distance from natural reef and species richness
-Richness_noREF <- Richness_combined[Richness_combined$Treatment != "Reference",] 
-plot(Richness_noREF$Reef.dist_m, Richness_noREF$Richness, xlab = "Reef distance", ylab = "Species richness", main = "Herbivore species richness vs distance from natural reef (covariate)")
-abline(lm(Richness ~ Reef.dist_m, data = Richness_noREF))
-sum_lm <- summary (lm(Richness ~ Reef.dist_m, data = Richness_noREF))
+# Correlation between distance from natural reef and abundance
+Abundance_noREF <- Abundance_combined[Abundance_combined$Treatment != "Reference",] 
+par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
+plot(Abundance_noREF$Reef.dist_m, Abundance_noREF$Abundance_m2, xlab = "Reef distance", ylab = expression(Fish ~ abundance ~ (m^-2)), ylim = c(0,0.3), main = "Herbivore abundance vs distance from natural reef (covariate)")
+abline(lm(Abundance_m2 ~ Reef.dist_m, data = Abundance_noREF))
+sum_lm <- summary (lm(Abundance_m2 ~ Reef.dist_m, data = Abundance_noREF))
 coef_lm <- sum_lm$coefficients
 text(x = 23,
-     y = 8,
+     y = 0.20,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -881,14 +882,15 @@ text(x = 23,
                      round(coef_lm[1,1],2)),
      pos = 4)
 
-# Correlation between distance from another AR and species richness
-Richness_ARonly <- Richness_combined[Richness_combined$Treatment == "AR",] 
-plot(Richness_ARonly$AR.dist_m, Richness_ARonly$Richness, xlab = "AR distance", ylab = "Species richness", main = "Herbivore species richness vs distance from another artifical reef (covariate)")
-abline(lm(Richness ~ AR.dist_m, data = Richness_ARonly))
-sum_lm <- summary (lm(Richness ~ AR.dist_m, data = Richness_ARonly))
+# Correlation between distance from another AR and species Abundance
+Abundance_ARonly <- Abundance_combined[Abundance_combined$Treatment == "AR",] 
+par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
+plot(Abundance_ARonly$AR.dist_m, Abundance_ARonly$Abundance_m2, xlab = "AR distance", ylab = expression(Fish ~ abundance ~ (m^-2)), ylim = c(0,0.2), main = "Herbivore abundance vs distance from another artifical reef (covariate)")
+abline(lm(Abundance_m2 ~ AR.dist_m, data = Abundance_ARonly))
+sum_lm <- summary (lm(Abundance_m2 ~ AR.dist_m, data = Abundance_ARonly))
 coef_lm <- sum_lm$coefficients
 text(x = 23,
-     y = 8,
+     y = 0.15,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -909,116 +911,82 @@ rm(sum_lm)
 
 ```
 ## Statistical models
-```{r richness}
-# Version 5: Conway-Maxwell Poisson, with distances including NA values (to test significance of distance effects)
-RmodelCMP3 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * Patch.type + Reef.dist_m +  AR.dist_m + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+```{r}
+# Version 1: Log-link to test Reef.dist and AR dist significance among AR
+AmodelNB1 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"))
 
-# Version 7: Conway-Maxwell Poisson, but without distances modeled.
-RmodelCMP5 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+# Version 6: Distances omitted; they are insignificant and the effect size is too small to be interesting
+AmodelNB6 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"), dispformula = ~ DietH)
 
-# Version 8: Conway-Maxwell Poisson, but without distances modeled.
-RmodelCMP6 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * DietH + Patch.type + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
-
-# Version 8: Conway-Maxwell Poisson, but without distances modeled.
-RmodelCMP7 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * DietH + YearGroup * Patch.type + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+# Version 7
+AmodelNB7 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + YearGroup * Patch.type + YearGroup * DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"), dispformula = ~ DietH)
 
 # Look at model
-Anova(RmodelCMP3) # Reef_distance and AR_distance are insignificant
-Anova(RmodelCMP5) # YearGroup, Patch.type and DietH are all significant, and the interaction as well
-Anova(RmodelCMP6)
-Anova(RmodelCMP7) # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
+Anova(AmodelNB1) # ARdist is significant, REEFdist isn't
+summary(AmodelNB1)$coefficients$cond # ARdist explains very little, thus is excluded
+Anova(AmodelNB6) # YearGroup, Patch.type and DietH are all significant. Interaction is also significant.
+Anova(AmodelNB7) # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
 
-# # Normality, heteroscedasticity with DHARMa
-Rsim_resCMP5 <- simulateResiduals(fittedModel = RmodelCMP5, re.form = NULL)
-Rsim_resCMP6 <- simulateResiduals(fittedModel = RmodelCMP6, re.form = NULL)
-Rsim_resCMP7 <- simulateResiduals(fittedModel = RmodelCMP7, re.form = NULL)
+# Normality, heteroscedasticity with DHARMa
+Asim_resNB6 <- simulateResiduals(fittedModel = AmodelNB6, re.form = NULL)
+Asim_resNB7 <- simulateResiduals(fittedModel = AmodelNB7, re.form = NULL)
 
-# # plot residuals
-plot(Rsim_resCMP5)
-plot(Rsim_resCMP6)
-plot(Rsim_resCMP7)
-testResiduals(Rsim_resCMP5)
-
-testZeroInflation(Rsim_resCMP5) # <- Not significant
-testCategorical(Rsim_resCMP5, catPred = Richness$Depth.MLLW)
-testCategorical(Rsim_resCMP5, catPred = Richness$YearGroup)
-testCategorical(Rsim_resCMP5, catPred = Richness$Patch.type)
-testCategorical(Rsim_resCMP5, catPred = Richness$DietH)
+# plot(Asim_resNB6)
+plot(Asim_resNB7)
 ```
-
-## Plots & post-hoc
+## Plots and post-hoc
 ```{r}
-# # 1. YearGroup main effect
-# emm_year <- emmeans(RmodelCMP7, ~ YearGroup, type = "response")
-# cld_year <- cld(emm_year, Letters = letters)
-# emm_year_df <- as.data.frame(cld_year)
-# emm_year_df$.group <- trimws(emm_year_df$.group)
-
 # 2. YearGroup:DietH interaction
-emm_diet <- emmeans(RmodelCMP7, ~ YearGroup * DietH, type = "response")
+emm_diet <- emmeans(AmodelNB7, ~ YearGroup * DietH, type = "response")
 cld_diet <- cld(emm_diet, by = "DietH", Letters = letters)
 emm_diet_df <- as.data.frame(cld_diet)
 emm_diet_df$.group <- trimws(emm_diet_df$.group)
 
 # 3. YearGroup:Patch.type interaction
-emm_patch <- emmeans(RmodelCMP7, ~ YearGroup * Patch.type, type = "response")
+emm_patch <- emmeans(AmodelNB7, ~ YearGroup * Patch.type, type = "response")
 cld_patch <- cld(emm_patch, by = "Patch.type", Letters = letters)
 emm_patch_df <- as.data.frame(cld_patch)
 emm_patch_df$.group <- trimws(emm_patch_df$.group)
 
-# # Plot 1: YearGroup main effect
-# Rplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
-#   geom_point(size = 3, color = "black") +
-#   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
-#                 width = 0.2) +
-#   geom_text(aes(label = .group, y = asymp.UCL), 
-#             vjust = -0.5, 
-#             size = 3) +
-#   labs(x = "Year Group", y = "Species richness (S)",
-#       title = "Herbivore species richness per survey over time",
-#       subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
-#   theme_minimal(base_size = 12) +
-#   theme_bw()
+# Count observations for each combination (for N values in figure description in paper)
+n_values <- Abundance %>%
+  group_by(YearGroup, Patch.type) %>%
+  summarise(N = n_distinct(SurveyNo), .groups = 'drop')
+print(n_values)
 
 # Plot 2: Yeargroup x DietH interaction
-Rplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, color = YearGroup, group = YearGroup)) +
+Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response*100, color = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL),
+  geom_text(aes(label = .group, y = asymp.UCL*100),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 5,
             show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = "Species richness (S)", color = "Year Group") +
+  labs(x = "Herbivore guild", y = expression(Abundance ~ (m^-2 ~ x ~ 100)), color = "Year Group",
+       title = "Herbivore fish abundance over time, by guild") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
-# Plot 3: Yeargroup x patch.type interaction
-Rplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, color = YearGroup, group = YearGroup)) +
+# Plot 3: Yeargroup x Patch.type interaction
+Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response*100, color = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL),
+  geom_text(aes(label = .group, y = asymp.UCL*100),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 4.5,
             show.legend = FALSE) +
-  labs(x = "Patch type", y = "Species richness (S)", color = "Year Group") +
+  labs(x = "Patch type", y = expression(Abundance ~ (m^-2 ~ x ~ 100)), color = "Year Group",
+       title = "Herbivore fish abundance over time, by patch type") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
-# # Post-hoc
-# posthoc_year <- pairs(emm_year)
-# print("=== Plot 1: YearGroup comparisons ===")
-# # print(posthoc_year) <if you want to see all non-significant as well.
-# posthoc_year_df <- as.data.frame(posthoc_year)
-# posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
-# print("Significant comparisons:")
-# print(posthoc_year_sig)
-
+# Post-hoc
 print("=== Plot 2: YearGroup comparisons within each Guild ===")
 posthoc_diet_within <- pairs(emm_diet, by = "DietH", adjust = "sidak")
 # print(posthoc_diet_within)
@@ -1052,559 +1020,8 @@ print("Significant comparisons:")
 print(posthoc_patch_between_sig)
 
 # Display plots
-print(Rplot1)
-print(Rplot2)
-print(Rplot3)
-
-```
-## Old plots with stacked
-```{r}
-# Interaction effect Year x Patch.type
-emm_int <- emmeans(RmodelCMP5, ~ YearGroup * Patch.type)
-emm_df <- as.data.frame(emm_int)
-
-ggplot(emm_df, aes(x = YearGroup,
-                   y = emmean,
-                   color = Patch.type)) +
-  geom_point(position = position_dodge(width = 0.6), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
-                position = position_dodge(width = 0.6),
-                width = 0.2) +
-  ylab("Predicted species richness") +
-  xlab("Patch type") +
-  ggtitle("Interaction: YearGroup × Patch.type") +
-  theme_bw() +
-  scale_colour_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733")) +
-  scale_fill_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733"))
-# Conclusion: differences between patch.types are different for each year group > interaction!
-
-# Stacked bar chart
-emm_df <- as.data.frame(emmeans(RmodelCMP5, ~ YearGroup + DietH, type = "response"))
-emm_year <- emmeans(RmodelCMP5, ~ YearGroup)
-cld_year <- cld(emm_year, Letters = letters, adjust = "sidak") # Letters show significance
-
-emm_totals <- emm_df %>%
-  group_by(YearGroup) %>%
-  summarise(
-    total = sum(response),
-    SE_total = sqrt(sum(SE^2)),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    LCL = total - 1.96 * SE_total,
-    UCL = total + 1.96 * SE_total
-  )
-
-emm_totals <- emm_totals %>%
-  left_join(cld_year[, c("YearGroup", ".group")], by = "YearGroup")
-
-## Reorder DietH, largest at bottom
-emm_df <- emm_df %>%
-  group_by(YearGroup) %>%
-  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
-  ungroup()
-
-ggplot(emm_df, aes(x = YearGroup, y = response, fill = DietH)) +
-  geom_bar(stat = "identity", width = 0.7) +  # stacked bars restored
-  geom_errorbar(
-    data = emm_totals,
-    aes(x = YearGroup, ymin = LCL, ymax = UCL),
-    inherit.aes = FALSE,
-    width = 0.25,
-    linewidth = 0.8
-  ) +
-  geom_text(
-    data = emm_totals,
-    aes(x = YearGroup, y = UCL + 0.05*max(UCL), label = .group),
-    inherit.aes = FALSE
-  ) +
-  scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +
-  labs(
-    x = "Yeargroup",
-    y = "Species richness",
-    title = "Predicted species richness per survey"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text = element_text(color = "black"),
-    panel.grid.major = element_line(color = "grey90"),
-    legend.title = element_text(face = "plain")
-  )
-
-# Adding the Patch.type aspect
-emm_df <- as.data.frame(emmeans(RmodelCMP5, ~ YearGroup * Patch.type + DietH, type = "response"))
-emm_year <- emmeans(RmodelCMP5, ~ YearGroup | Patch.type)
-cld_year <- cld(emm_year, Letters = letters, adjust = "sidak") %>%
-  as.data.frame() # Letters show significance
-
-emm_totals <- emm_df %>%
-  group_by(YearGroup, Patch.type) %>%
-  summarise(
-    total = sum(response),
-    SE_total = sqrt(sum(SE^2)),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    LCL = total - 1.96 * SE_total,
-    UCL = total + 1.96 * SE_total
-  )
-
-emm_totals <- emm_totals %>%
-  left_join(cld_year[, c("YearGroup", "Patch.type", ".group")], by = c("YearGroup", "Patch.type"))
-
-## Reorder DietH, largest at bottom
-emm_df <- emm_df %>%
-  group_by(YearGroup, Patch.type) %>%
-  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
-  ungroup()
-
-ggplot(emm_df, aes(x = YearGroup, y = response, fill = DietH)) +
-  geom_bar(stat = "identity", width = 0.7) +
-  geom_errorbar(
-    data = emm_totals,
-    aes(x = YearGroup, ymin = LCL, ymax = UCL),
-    inherit.aes = FALSE,
-    width = 0.25,
-    linewidth = 0.8
-  ) +
-  geom_text(
-    data = emm_totals,
-    aes(x = YearGroup, y = UCL + 0.05*max(UCL), label = .group),
-    inherit.aes = FALSE,
-    size = 3
-  ) +
-  facet_wrap(~ Patch.type) +
-  scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +
-  labs(
-    x = "Yeargroup",
-    y = "Species richness",
-    title = "Predicted species richness per survey"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text = element_text(color = "black"),
-    panel.grid.major = element_line(color = "grey90"),
-    legend.title = element_text(face = "plain"),
-    strip.text = element_text(face = "plain")  # Make facet labels bold
-  )
-```
-# Biomass
-```{r}
-# ---- DATA PREP ----
-# Remove rows with no abundance or non-herbivorous fish
-Biomass <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
-Biomass <- droplevels(Biomass)
-
-all_combos <- expand_grid(
-  SurveyNo = unique(Biomass$SurveyNo),
-  DietH = unique(Biomass$DietH))
-
-# Go from abundance to species Biomass, and bringing back 0 values for groups without observations
-## First store metadata
-survey_meta <- Biomass %>%
-  dplyr::select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
-  distinct()
-
-Biomass <- Biomass %>%
-  group_by(SurveyNo, DietH) %>%
-  summarise(GuildBiomass = sum(Biomass_kgha),
-            .groups = "drop") 
-
-# Bring back the lost metadata 
-Biomass <- Biomass %>%
-  left_join(survey_meta, by = "SurveyNo")
-rm(survey_meta, all_combos)
-```
-## Pre-model plots
-```{r}
-# Add the different guilds together per survey
-Biomass_combined <- Biomass %>%
-  group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
-  summarise (Biomass = sum(GuildBiomass))
-
-# Correlation between reef depth and species richness
-plot(Biomass_combined$Depth.MLLW, Biomass_combined$Biomass, xlab = "Depth", ylab = "Biomass (kg/ha)", ylim = c(0, 150), main = "Biomass vs Depth (covariate)")
-abline(lm(Biomass ~ Depth.MLLW, data = Biomass_combined))
-sum_lm <- summary (lm(Biomass ~ Depth.MLLW, data = Biomass_combined))
-coef_lm <- sum_lm$coefficients
-text(x = 7,
-     y = 120,
-     labels = paste0("R^2 = ",
-                     #Round r.squared to 2 decimals
-                     round(sum_lm$r.squared,2),
-                     "\np-value = ",
-                     #Round p.value of slope to 3 decimals
-                     round(coef_lm[2,4],3),
-                     "\ny = ",
-                     #Round slope coefficient to 3 decimals
-                     round(coef_lm[2,1],3),
-                     "x + ",
-                     #Round intercept coefficient to 2 decimals
-                     round(coef_lm[1,1],2)),
-     pos = 4)
-
-# Correlation between distance from natural reef and species Biomass
-Biomass_noREF <- Biomass_combined[Biomass_combined$Treatment != "Reference",] 
-plot(Biomass_noREF$Reef.dist_m, Biomass_noREF$Biomass, xlab = "Reef distance", ylab = "Biomass (kg/ha)", ylim = c(0, 100), main = "Biomass vs distance from natural reef (covariate)")
-abline(lm(Biomass ~ Reef.dist_m, data = Biomass_noREF))
-sum_lm <- summary (lm(Biomass ~ Reef.dist_m, data = Biomass_noREF))
-coef_lm <- sum_lm$coefficients
-text(x = 20,
-     y = 70,
-     labels = paste0("R^2 = ",
-                     #Round r.squared to 2 decimals
-                     round(sum_lm$r.squared,2),
-                     "\np-value = ",
-                     #Round p.value of slope to 2 decimals
-                     round(coef_lm[2,4],2),
-                     "\ny = ",
-                     #Round slope coefficient to 2 decimals
-                     round(coef_lm[2,1],1),
-                     "x + ",
-                     #Round intercept coefficient to 2 decimals
-                     round(coef_lm[1,1],2)),
-     pos = 4)
-
-# Correlation between distance from another AR and species Biomass
-Biomass_ARonly <- Biomass_combined[Biomass_combined$Treatment == "AR",] 
-plot(Biomass_ARonly$AR.dist_m, Biomass_ARonly$Biomass, xlab = "AR distance", ylab = "Biomass (kg/ha)", ylim = c(0, 150), main = "Biomass vs distance from another artifical reef (covariate)")
-abline(lm(Biomass ~ AR.dist_m, data = Biomass_ARonly))
-sum_lm <- summary (lm(Biomass ~ AR.dist_m, data = Biomass_ARonly))
-coef_lm <- sum_lm$coefficients
-text(x = 20,
-     y = 120,
-     labels = paste0("R^2 = ",
-                     #Round r.squared to 2 decimals
-                     round(sum_lm$r.squared,2),
-                     "\np-value = ",
-                     #Round p.value of slope to 2 decimals
-                     round(coef_lm[2,4],2),
-                     "\ny = ",
-                     #Round slope coefficient to 2 decimals
-                     round(coef_lm[2,1],1),
-                     "x + ",
-                     #Round intercept coefficient to 2 decimals
-                     round(coef_lm[1,1],2)),
-     pos = 4)
-
-rm(sum_lm)
-```
-
-## Statistical models
-```{r}
-# Version 3: log-link, first testing if Reef and AR distance without reference/control patches is significant
-BmodelLoglink1 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
-
-# Version 6: v3, taking only Reefdistance with proxies at reference
-BmodelLoglink4 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reefdistance + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, dispformula = ~ DietH, family = tweedie(link="log"))
-
-# Version 8: Two-way with YearGroup * DietH
-BmodelLoglink6 <- glmmTMB(GuildBiomass ~ Depth.MLLW + YearGroup * DietH + Patch.type + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
-
-# Version 9: Two two-way with YearGroup * DietH & Yeargroup * Patch.type
-BmodelLoglink7 <- glmmTMB(GuildBiomass ~ Depth.MLLW + YearGroup * DietH + YearGroup * Patch.type + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
-
-# Look at model
-Anova(BmodelLoglink1) #<- Reef_distance is significant
-summary(BmodelLoglink4)$coefficients$cond #<- Coefficient of Reefdistance is small, but has an influence: keeping
-Anova(BmodelLoglink4) # Patch.type and DietH are significant, YearGroup and interaction aren't.
-Anova(BmodelLoglink6) # Now DietH, Patch.type and the interaction YearGroup:DietH are significant.
-Anova(BmodelLoglink7) # YearGroup:DietH is significant, YearGroup:Patch.type isn't.
- 
-# Normality & homoscedasticity for DHARMa
-Bsim_resLoglink4 <- simulateResiduals(fittedModel = BmodelLoglink4, re.form = NULL)
-Bsim_resLoglink6 <- simulateResiduals(fittedModel = BmodelLoglink6, re.form = NULL)
-Bsim_resLoglink7 <- simulateResiduals(fittedModel = BmodelLoglink7, re.form = NULL)
-
-# plot residuals
-plot(Bsim_resLoglink4)
-plot(Bsim_resLoglink6)
-plot(Bsim_resLoglink7)
-```
-## Plots and post-hoc
-```{r}
-# 1. YearGroup main effect
-emm_year <- emmeans(BmodelLoglink7, ~ YearGroup, type = "response")
-cld_year <- cld(emm_year, Letters = letters)
-emm_year_df <- as.data.frame(cld_year)
-emm_year_df$.group <- trimws(emm_year_df$.group)
-
-# 2. YearGroup:DietH interaction
-emm_diet <- emmeans(BmodelLoglink7, ~ YearGroup * DietH, type = "response")
-cld_diet <- cld(emm_diet, by = "DietH", Letters = letters)
-emm_diet_df <- as.data.frame(cld_diet)
-emm_diet_df$.group <- trimws(emm_diet_df$.group)
-
-# 3. Patch.type main effect
-emm_patch <- emmeans(BmodelLoglink7, ~ Patch.type, type = "response")
-cld_patch <- cld(emm_patch, Letters = letters)
-emm_patch_df <- as.data.frame(cld_patch)
-emm_patch_df$.group <- trimws(emm_patch_df$.group)
-
-# Plot 1: YearGroup main effect
-Bplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
-  geom_point(size = 3, color = "black") +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
-                width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL), 
-            vjust = -0.5, 
-            size = 4.2) +
-  labs(x = "Year Group",  y = expression(Biomass ~ (kg ~ ha^-1)),
-       title = "Mean herbivore biomass over time",
-      subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
-  theme_minimal(base_size = 12) +
-  theme_bw()
-
-# Plot 2: Yeargroup x DietH interaction
-Bplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, color = YearGroup, group = YearGroup)) +
-  geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
-                position = position_dodge(width = 0.5),
-                width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL),
-            position = position_dodge(width = 0.5),
-            vjust = -0.5,
-            size = 5,
-            show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = expression(Biomass ~ (kg ~ ha^-1)), color = "Year Group",
-       title = "Mean herbivore biomass over time, by guild") +
-  theme_minimal(base_size = 12) +
-  theme_bw()
-
-# Plot 3: Patch.type main effect
-Bplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response)) +
-  geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
-                position = position_dodge(width = 0.5),
-                width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL),
-            position = position_dodge(width = 0.5),
-            vjust = -0.5,
-            size = 4.5,
-            show.legend = FALSE) +
-  labs(x = "Patch type", y = expression(Biomass ~ (kg ~ ha^-1)) ,
-       title = "Mean herbivore biomass by patch type") +
-  theme_minimal(base_size = 12) +
-  theme_bw()
-
-# Post-hoc
-posthoc_year <- pairs(emm_year, adjust = "sidak")
-print("=== Plot 1: YearGroup comparisons ===")
-# print(posthoc_year) <if you want to see all non-significant as well.
-posthoc_year_df <- as.data.frame(posthoc_year)
-posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_year_sig)
-
-print("=== Plot 2: YearGroup comparisons within each Guild ===")
-posthoc_diet_within <- pairs(emm_diet, by = "DietH", adjust = "sidak")
-# print(posthoc_diet_within)
-posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
-posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_diet_within_sig)
-
-print("=== Plot 2: Guild comparisons within each YearGroup ===")
-posthoc_diet_between <- pairs(emm_diet, by = "YearGroup", adjust = "sidak")
-# print(posthoc_diet_between)
-posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
-posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_diet_between_sig)
-
-print("=== Plot 3: Patch type comparisons ===")
-posthoc_patch <- pairs(emm_patch, adjust = "sidak")
-# print(posthoc_patch_between)
-posthoc_patch_df <- as.data.frame(posthoc_patch)
-posthoc_patch_sig <- posthoc_patch_df[posthoc_patch_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_patch_sig)
-
-# Display plots
-print(Bplot1)
-print(Bplot2)
-print(Bplot3)
-```
-## Old plots
-```{r}
-# Get interaction emmeans
-emm_interaction <- emmeans(BmodelLoglink6, ~ YearGroup * DietH, type = "response")
-emm_df_interaction <- as.data.frame(emm_interaction)
-
-# Get compact letter display for the interaction
-cld_interaction <- cld(emm_interaction, by = "DietH", Letters = letters, adjust = "sidak")
-emm_df_interaction <- as.data.frame(cld_interaction)
-emm_df_interaction$.group <- trimws(emm_df_interaction$.group)
-
-# Plot 1: Grouped bars
-plot1 <- ggplot(emm_df_interaction, aes(x = DietH, y = response, fill = YearGroup)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-  geom_errorbar(
-    aes(ymin = asymp.LCL, ymax = asymp.UCL),
-    position = position_dodge(width = 0.8),
-    width = 0.25
-  ) +
-  geom_text(
-    aes(label = .group, y = asymp.UCL),
-    position = position_dodge(width = 0.8),
-    vjust = -0.5,
-    size = 3
-  ) +
-  scale_fill_brewer(palette = "Set2", name = "Year Group") +
-  labs(
-    x = "Herbivore Guild",
-    y = "Biomass (kg/ha)",
-    title = "Predicted Biomass by Guild and Year Group"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text = element_text(color = "black"),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.major = element_line(color = "grey90"),
-    legend.title = element_text(face = "plain")
-  )
-
-# Plot 2: stacked bars
-# Get interaction emmeans
-emm_interaction <- emmeans(BmodelLoglink6, ~ YearGroup * DietH, type = "response")
-emm_df_interaction <- as.data.frame(emm_interaction)
-
-# Calculate the ACTUAL totals from the stacked bars
-emm_totals_stacked <- emm_df_interaction %>%
-  group_by(YearGroup) %>%
-  summarise(
-    total = sum(response),
-    SE_total = sqrt(sum(SE^2)),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    LCL = total - 1.96 * SE_total,
-    UCL = total + 1.96 * SE_total
-  )
-
-# Now test differences between these totals using custom contrasts
-# Get all combinations
-emm_all <- emmeans(BmodelLoglink6, ~ YearGroup * DietH, type = "response")
-
-# Create contrasts that sum guilds within each year, then compare years
-contrast_list <- list(
-  "2021-2022 vs 2023-2024" = c(1,1,1,1,1, -1,-1,-1,-1,-1, 0,0,0,0,0),
-  "2021-2022 vs 2025" = c(1,1,1,1,1, 0,0,0,0,0, -1,-1,-1,-1,-1),
-  "2023-2024 vs 2025" = c(0,0,0,0,0, 1,1,1,1,1, -1,-1,-1,-1,-1)
-)
-
-# Apply contrasts
-total_comparisons <- contrast(emm_all, method = contrast_list, type = "response")
-summary(total_comparisons, adjust = "sidak")
-
-# Get p-values and assign letters manually based on results
-pvals <- summary(total_comparisons, adjust = "sidak")
-print(pvals)
-
-# Assign letters based on the comparison results
-# You'll need to look at the p-values and assign appropriately
-emm_totals_stacked$`.group` <- c("a", "a", "b")  # Adjust based on your results
-
-# Reorder DietH for stacking (largest at bottom)
-emm_df_interaction <- emm_df_interaction %>%
-  group_by(YearGroup) %>%
-  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
-  ungroup()
-
-# Create plot with correct totals
-plot2 <- ggplot(emm_df_interaction, aes(x = YearGroup, y = response, fill = DietH)) +
-  geom_bar(stat = "identity", width = 0.7) +
-  geom_errorbar(
-    data = emm_totals_stacked,
-    aes(x = YearGroup, ymin = LCL, ymax = UCL),
-    inherit.aes = FALSE,
-    width = 0.25,
-    linewidth = 0.8
-  ) +
-  geom_text(
-    data = emm_totals_stacked,
-    aes(x = YearGroup, y = UCL + 0.5, label = .group),
-    inherit.aes = FALSE,
-    size = 4
-  ) +
-  scale_fill_brewer(palette = "Set2", name = "Herbivore Guild") +
-  labs(
-    x = "Year Group",
-    y = "Biomass (kg/ha)",
-    title = "Predicted Biomass by Year Group (Stacked by Guild)"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text = element_text(color = "black"),
-    panel.grid.major = element_line(color = "grey90"),
-    legend.title = element_text(face = "plain")
-  )
-
-
-# Plotted per patch type
-emm_df <- as.data.frame(emmeans(BmodelLoglink6, ~ DietH + Patch.type, type = "response"))
-cld_total <- cld(emmeans(BmodelLoglink6, ~ Patch.type, type="response"), Letters=letters)
-
-emm_totals <- emm_df %>%
-  group_by(Patch.type) %>%
-  summarise(
-    total = sum(response),          # sum of predicted means
-    SE_total = sqrt(sum(SE^2)),     # approximate SE of the sum
-    .groups = "drop"
-  ) %>%
-  mutate(
-    LCL = total - 1.96*SE_total,
-    UCL = total + 1.96*SE_total
-  )
-
-emm_totals <- emm_totals %>%
-  left_join(cld_total %>% dplyr::select(Patch.type, .group), by=c("Patch.type"))
-
-emm_df <- emm_df %>%
-  group_by(Patch.type) %>%
-  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
-  ungroup()
-
-plot3 <- ggplot(emm_df, aes(x = Patch.type, y = response, fill = DietH)) +
-  geom_bar(stat = "identity", width = 0.7) +
-  geom_errorbar(
-    data = emm_totals,
-    aes(x = Patch.type, ymin = LCL, ymax = UCL, group = Patch.type),
-    inherit.aes = FALSE,
-    width = 0.25,
-    linewidth = 0.8
-  ) +
-  scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +
-  geom_text(
-    data = emm_totals,
-    aes(x = Patch.type, y = UCL + 0.10*max(UCL), label = .group),
-    inherit.aes = FALSE
-  ) +
-  labs(
-    x = "Patch type",
-    y = "Biomass (kg/ha)",
-    title = "Predicted biomass"
-  ) +
-  theme_minimal(base_size = 12) +  
-  theme(
-    axis.text = element_text(color = "black"),
-    panel.grid.major = element_line(color = "grey90"),
-    legend.title = element_text(face = "plain")
-  )
-
-print(plot1)
-print(plot2)
-print(plot3)
-
-# Post-hoc
-# Plot 1
-posthoc_plot1 <- pairs(emm_interaction, by = "DietH", adjust = "sidak")
-print("=== Plot 1: YearGroup comparisons within each Guild ===")
-print(posthoc_plot1)
-posthoc_plot1_df <- as.data.frame(posthoc_plot1)
-posthoc_plot1_sig <- posthoc_plot1_df[posthoc_plot1_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_plot1_sig)
+print(Aplot2)
+print(Aplot3)
 ```
 # Mean size
 ```{r}
@@ -1886,62 +1303,60 @@ MSplot5 <- ggplot(emm5_df, aes(x = DietH, y = response,
   facet_wrap(~ Patch.type, ncol = 1, scales = "free_y") +
   scale_y_continuous(limits = c(0, NA), expand = expansion(add = c(0, 5))) +
   labs(x = "Herbivore guild", y = "Mean size (cm)",
-       color = "Year group") +
+       color = "Year Group") +
   theme_bw() +
   theme(strip.text = element_text(face = "plain"),
-        strip.background = element_blank())  # Remove grey background from facet labels
+        strip.background = element_blank(),
+        legend.position = "top",
+        legend.direction = "horizontal")
 
 Y_contrasts <- contrast(emm5,
                         "pairwise",
                         by = c("DietH","Patch.type"))
 summary(Y_contrasts, infer = TRUE)
 print(MSplot5)
-
 ```
-# Abundance
+# Biomass
 ```{r}
 # ---- DATA PREP ----
-# Remove rows with non-herbivorous fish, and non-instantaneous observations
-Abundance <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
-Abundance <- droplevels(Abundance)
+# Remove rows with no abundance or non-herbivorous fish
+Biomass <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
+Biomass <- droplevels(Biomass)
 
 all_combos <- expand_grid(
-  SurveyNo = unique(Abundance$SurveyNo),
-  DietH = unique(Abundance$DietH))
+  SurveyNo = unique(Biomass$SurveyNo),
+  DietH = unique(Biomass$DietH))
 
-# Sum abundances per guild
+# Go from abundance to species Biomass, and bringing back 0 values for groups without observations
 ## First store metadata
-survey_meta <- Abundance %>%
+survey_meta <- Biomass %>%
   dplyr::select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
   distinct()
 
-## Sum abundance per guild
-Abundance <- Abundance %>%
+Biomass <- Biomass %>%
   group_by(SurveyNo, DietH) %>%
-  summarise(GuildAbundance_m2 = sum(Abundance_m2),
-            .groups = "drop") %>%
-  right_join(all_combos, by = c("SurveyNo", "DietH")) 
+  summarise(GuildBiomass = sum(Biomass_kgha),
+            .groups = "drop") 
 
-## Bring back metadata lost in group_by
-Abundance <- Abundance %>%
+# Bring back the lost metadata 
+Biomass <- Biomass %>%
   left_join(survey_meta, by = "SurveyNo")
 rm(survey_meta, all_combos)
 ```
 ## Pre-model plots
 ```{r}
 # Add the different guilds together per survey
-Abundance_combined <- Abundance %>%
+Biomass_combined <- Biomass %>%
   group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
-  summarise (Abundance_m2 = sum(GuildAbundance_m2))
+  summarise (Biomass = sum(GuildBiomass))
 
-# Correlation between reef depth and abundance
-par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
-plot(Abundance_combined$Depth.MLLW, Abundance_combined$Abundance_m2, xlab = "Depth", ylab = expression(Fish ~ abundance ~ (m^-2)), main = "Herbivore abundance vs Depth (covariate)")
-abline(lm(Abundance_m2 ~ Depth.MLLW, data = Abundance_combined))
-sum_lm <- summary (lm(Abundance_m2 ~ Depth.MLLW, data = Abundance_combined))
+# Correlation between reef depth and species richness
+plot(Biomass_combined$Depth.MLLW, Biomass_combined$Biomass, xlab = "Depth", ylab = "Biomass (kg/ha)", ylim = c(0, 150), main = "Biomass vs Depth (covariate)")
+abline(lm(Biomass ~ Depth.MLLW, data = Biomass_combined))
+sum_lm <- summary (lm(Biomass ~ Depth.MLLW, data = Biomass_combined))
 coef_lm <- sum_lm$coefficients
 text(x = 7,
-     y = 1,
+     y = 120,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -1956,15 +1371,232 @@ text(x = 7,
                      round(coef_lm[1,1],2)),
      pos = 4)
 
-# Correlation between distance from natural reef and abundance
-Abundance_noREF <- Abundance_combined[Abundance_combined$Treatment != "Reference",] 
-par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
-plot(Abundance_noREF$Reef.dist_m, Abundance_noREF$Abundance_m2, xlab = "Reef distance", ylab = expression(Fish ~ abundance ~ (m^-2)), ylim = c(0,0.3), main = "Herbivore abundance vs distance from natural reef (covariate)")
-abline(lm(Abundance_m2 ~ Reef.dist_m, data = Abundance_noREF))
-sum_lm <- summary (lm(Abundance_m2 ~ Reef.dist_m, data = Abundance_noREF))
+# Correlation between distance from natural reef and species Biomass
+Biomass_noREF <- Biomass_combined[Biomass_combined$Treatment != "Reference",] 
+plot(Biomass_noREF$Reef.dist_m, Biomass_noREF$Biomass, xlab = "Reef distance", ylab = "Biomass (kg/ha)", ylim = c(0, 100), main = "Biomass vs distance from natural reef (covariate)")
+abline(lm(Biomass ~ Reef.dist_m, data = Biomass_noREF))
+sum_lm <- summary (lm(Biomass ~ Reef.dist_m, data = Biomass_noREF))
 coef_lm <- sum_lm$coefficients
-text(x = 23,
-     y = 0.20,
+text(x = 20,
+     y = 70,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# Correlation between distance from another AR and species Biomass
+Biomass_ARonly <- Biomass_combined[Biomass_combined$Treatment == "AR",] 
+plot(Biomass_ARonly$AR.dist_m, Biomass_ARonly$Biomass, xlab = "AR distance", ylab = "Biomass (kg/ha)", ylim = c(0, 150), main = "Biomass vs distance from another artifical reef (covariate)")
+abline(lm(Biomass ~ AR.dist_m, data = Biomass_ARonly))
+sum_lm <- summary (lm(Biomass ~ AR.dist_m, data = Biomass_ARonly))
+coef_lm <- sum_lm$coefficients
+text(x = 20,
+     y = 120,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 2 decimals
+                     round(coef_lm[2,4],2),
+                     "\ny = ",
+                     #Round slope coefficient to 2 decimals
+                     round(coef_lm[2,1],1),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+rm(sum_lm)
+```
+
+## Statistical models
+```{r}
+# Version 3: log-link, first testing if Reef and AR distance without reference/control patches is significant
+BmodelLoglink1 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
+
+# Version 6: v3, taking only Reefdistance with proxies at reference
+BmodelLoglink4 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reefdistance + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, dispformula = ~ DietH, family = tweedie(link="log"))
+
+# Version 8: Two-way with YearGroup * DietH
+BmodelLoglink6 <- glmmTMB(GuildBiomass ~ Depth.MLLW + YearGroup * DietH + Patch.type + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
+
+# Version 9: Two two-way with YearGroup * DietH & Yeargroup * Patch.type
+BmodelLoglink7 <- glmmTMB(GuildBiomass ~ Depth.MLLW + YearGroup * DietH + YearGroup * Patch.type + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
+
+# Look at model
+Anova(BmodelLoglink1) #<- Reef_distance is significant
+summary(BmodelLoglink4)$coefficients$cond #<- Coefficient of Reefdistance is small, but has an influence: keeping
+Anova(BmodelLoglink4) # Patch.type and DietH are significant, YearGroup and interaction aren't.
+Anova(BmodelLoglink6) # Now DietH, Patch.type and the interaction YearGroup:DietH are significant.
+Anova(BmodelLoglink7) # YearGroup:DietH is significant, YearGroup:Patch.type isn't.
+ 
+# Normality & homoscedasticity for DHARMa
+Bsim_resLoglink4 <- simulateResiduals(fittedModel = BmodelLoglink4, re.form = NULL)
+Bsim_resLoglink6 <- simulateResiduals(fittedModel = BmodelLoglink6, re.form = NULL)
+Bsim_resLoglink7 <- simulateResiduals(fittedModel = BmodelLoglink7, re.form = NULL)
+
+# plot residuals
+plot(Bsim_resLoglink4)
+plot(Bsim_resLoglink6)
+plot(Bsim_resLoglink7)
+```
+## Plots and post-hoc
+```{r}
+# 1. YearGroup main effect
+emm_year <- emmeans(BmodelLoglink7, ~ YearGroup, type = "response")
+cld_year <- cld(emm_year, Letters = letters)
+emm_year_df <- as.data.frame(cld_year)
+emm_year_df$.group <- trimws(emm_year_df$.group)
+
+# 2. YearGroup:DietH interaction
+emm_diet <- emmeans(BmodelLoglink7, ~ YearGroup * DietH, type = "response")
+cld_diet <- cld(emm_diet, by = "DietH", Letters = letters)
+emm_diet_df <- as.data.frame(cld_diet)
+emm_diet_df$.group <- trimws(emm_diet_df$.group)
+
+# 3. Patch.type main effect
+emm_patch <- emmeans(BmodelLoglink7, ~ Patch.type, type = "response")
+cld_patch <- cld(emm_patch, Letters = letters)
+emm_patch_df <- as.data.frame(cld_patch)
+emm_patch_df$.group <- trimws(emm_patch_df$.group)
+
+# Plot 1: YearGroup main effect
+Bplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
+  geom_point(size = 3, color = "black") +
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
+                width = 0.2) +
+  geom_text(aes(label = .group, y = asymp.UCL), 
+            vjust = -0.5, 
+            size = 4.2) +
+  labs(x = "Year Group",  y = expression(Biomass ~ (kg ~ ha^-1)),
+       title = "Mean herbivore biomass over time",
+      subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
+  theme_minimal(base_size = 12) +
+  theme_bw()
+
+# Plot 2: Yeargroup x DietH interaction
+Bplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, color = YearGroup, group = YearGroup)) +
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+                position = position_dodge(width = 0.5),
+                width = 0.2) +
+  geom_text(aes(label = .group, y = asymp.UCL),
+            position = position_dodge(width = 0.5),
+            vjust = -0.5,
+            size = 5,
+            show.legend = FALSE) +
+  labs(x = "Herbivore guild", y = expression(Biomass ~ (kg ~ ha^-1)), color = "Year Group",
+       title = "Mean herbivore biomass over time, by guild") +
+  theme_minimal(base_size = 12) +
+  theme_bw()
+
+# Plot 3: Patch.type main effect
+Bplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response)) +
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+                position = position_dodge(width = 0.5),
+                width = 0.2) +
+  geom_text(aes(label = .group, y = asymp.UCL),
+            position = position_dodge(width = 0.5),
+            vjust = -0.5,
+            size = 4.5,
+            show.legend = FALSE) +
+  labs(x = "Patch type", y = expression(Biomass ~ (kg ~ ha^-1)) ,
+       title = "Mean herbivore biomass by patch type") +
+  theme_minimal(base_size = 12) +
+  theme_bw()
+
+# Post-hoc
+posthoc_year <- pairs(emm_year, adjust = "sidak")
+print("=== Plot 1: YearGroup comparisons ===")
+# print(posthoc_year) <if you want to see all non-significant as well.
+posthoc_year_df <- as.data.frame(posthoc_year)
+posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
+print("Significant comparisons:")
+print(posthoc_year_sig)
+
+print("=== Plot 2: YearGroup comparisons within each Guild ===")
+posthoc_diet_within <- pairs(emm_diet, by = "DietH", adjust = "sidak")
+# print(posthoc_diet_within)
+posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
+posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05, ]
+print("Significant comparisons:")
+print(posthoc_diet_within_sig)
+
+print("=== Plot 2: Guild comparisons within each YearGroup ===")
+posthoc_diet_between <- pairs(emm_diet, by = "YearGroup", adjust = "sidak")
+# print(posthoc_diet_between)
+posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
+posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
+print("Significant comparisons:")
+print(posthoc_diet_between_sig)
+
+print("=== Plot 3: Patch type comparisons ===")
+posthoc_patch <- pairs(emm_patch, adjust = "sidak")
+# print(posthoc_patch_between)
+posthoc_patch_df <- as.data.frame(posthoc_patch)
+posthoc_patch_sig <- posthoc_patch_df[posthoc_patch_df$p.value < 0.05, ]
+print("Significant comparisons:")
+print(posthoc_patch_sig)
+
+# Display plots
+print(Bplot1)
+print(Bplot2)
+print(Bplot3)
+```
+# Species richness
+```{r}
+# ---- DATA PREP ----
+# Remove rows with non-herbivorous fish, and drop the "Other" level
+Richness <- fish[fish$DietH != "Other",]
+Richness <- droplevels(Richness)
+
+all_combos <- expand_grid(
+  SurveyNo = unique(Richness$SurveyNo),
+  DietH = unique(Richness$DietH))
+
+# Go from abundance to species richness, and bring back 0 values for groups without observations
+## First store metadata
+survey_meta <- Richness %>%
+  dplyr::select(SurveyNo, Transect, Depth.MLLW, Reefdistance, ARdistance, Reef.dist_m, AR.dist_m, YearGroup, TransectDate, Patch.type, Treatment, Observer) %>%
+  distinct()
+
+## Count distinct herbivore species per herbivore guild per survey, and fill in 0 if there are none.
+Richness <- Richness %>%
+  group_by(SurveyNo, DietH) %>%
+  summarise(GuildRichness = n_distinct(Species[Abundance > 0]),
+            .groups = "drop") %>%
+  right_join(all_combos, by = c("SurveyNo", "DietH")) 
+
+## Bring back metadata lost in group_by
+Richness <- Richness %>%
+  left_join(survey_meta, by = "SurveyNo")
+rm(survey_meta, all_combos)
+
+```
+## Pre-model plots
+```{r}
+# Add the different guilds together per survey
+Richness_combined <- Richness %>%
+  group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
+  summarise (Richness = sum(GuildRichness))
+
+# Correlation between reef depth and species richness
+plot(Richness_combined$Depth.MLLW, Richness_combined$Richness, xlab = "Depth", ylab = "Species richness", main = "Herbivore species richness vs Depth (covariate)")
+abline(lm(Richness ~ Depth.MLLW, data = Richness_combined))
+sum_lm <- summary (lm(Richness ~ Depth.MLLW, data = Richness_combined))
+coef_lm <- sum_lm$coefficients
+text(x = 7,
+     y = 10,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -1979,15 +1611,36 @@ text(x = 23,
                      round(coef_lm[1,1],2)),
      pos = 4)
 
-# Correlation between distance from another AR and species Abundance
-Abundance_ARonly <- Abundance_combined[Abundance_combined$Treatment == "AR",] 
-par(mar = c(5, 5, 4, 2) + 0.1)  # Increase left margin (second value)
-plot(Abundance_ARonly$AR.dist_m, Abundance_ARonly$Abundance_m2, xlab = "AR distance", ylab = expression(Fish ~ abundance ~ (m^-2)), ylim = c(0,0.2), main = "Herbivore abundance vs distance from another artifical reef (covariate)")
-abline(lm(Abundance_m2 ~ AR.dist_m, data = Abundance_ARonly))
-sum_lm <- summary (lm(Abundance_m2 ~ AR.dist_m, data = Abundance_ARonly))
+# Correlation between distance from natural reef and species richness
+Richness_noREF <- Richness_combined[Richness_combined$Treatment != "Reference",] 
+plot(Richness_noREF$Reef.dist_m, Richness_noREF$Richness, xlab = "Reef distance", ylab = "Species richness", main = "Herbivore species richness vs distance from natural reef (covariate)")
+abline(lm(Richness ~ Reef.dist_m, data = Richness_noREF))
+sum_lm <- summary (lm(Richness ~ Reef.dist_m, data = Richness_noREF))
 coef_lm <- sum_lm$coefficients
 text(x = 23,
-     y = 0.15,
+     y = 8,
+     labels = paste0("R^2 = ",
+                     #Round r.squared to 2 decimals
+                     round(sum_lm$r.squared,2),
+                     "\np-value = ",
+                     #Round p.value of slope to 3 decimals
+                     round(coef_lm[2,4],3),
+                     "\ny = ",
+                     #Round slope coefficient to 3 decimals
+                     round(coef_lm[2,1],3),
+                     "x + ",
+                     #Round intercept coefficient to 2 decimals
+                     round(coef_lm[1,1],2)),
+     pos = 4)
+
+# Correlation between distance from another AR and species richness
+Richness_ARonly <- Richness_combined[Richness_combined$Treatment == "AR",] 
+plot(Richness_ARonly$AR.dist_m, Richness_ARonly$Richness, xlab = "AR distance", ylab = "Species richness", main = "Herbivore species richness vs distance from another artifical reef (covariate)")
+abline(lm(Richness ~ AR.dist_m, data = Richness_ARonly))
+sum_lm <- summary (lm(Richness ~ AR.dist_m, data = Richness_ARonly))
+coef_lm <- sum_lm$coefficients
+text(x = 23,
+     y = 8,
      labels = paste0("R^2 = ",
                      #Round r.squared to 2 decimals
                      round(sum_lm$r.squared,2),
@@ -2008,110 +1661,88 @@ rm(sum_lm)
 
 ```
 ## Statistical models
-```{r}
-# Version 1: Log-link to test Reef.dist and AR dist significance among AR
-AmodelNB1 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"))
+```{r richness}
+# Version 5: Conway-Maxwell Poisson, with distances including NA values (to test significance of distance effects)
+RmodelCMP3 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * Patch.type + Reef.dist_m +  AR.dist_m + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
 
-# Version 6: Distances omitted; they are insignificant and the effect size is too small to be interesting
-AmodelNB6 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"), dispformula = ~ DietH)
+# Version 7: Conway-Maxwell Poisson, but without distances modeled.
+RmodelCMP5 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
 
-# Version 7
-AmodelNB7 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + YearGroup * Patch.type + YearGroup * DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"), dispformula = ~ DietH)
+# Version 8: Conway-Maxwell Poisson, but without distances modeled.
+RmodelCMP6 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * DietH + Patch.type + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
+
+# Version 8: Conway-Maxwell Poisson, but without distances modeled.
+RmodelCMP7 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * DietH + YearGroup * Patch.type + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
 
 # Look at model
-Anova(AmodelNB1) # ARdist is significant, REEFdist isn't
-summary(AmodelNB1)$coefficients$cond # ARdist explains very little, thus is excluded
-Anova(AmodelNB6) # YearGroup, Patch.type and DietH are all significant. Interaction is also significant.
-Anova(AmodelNB7) # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
+Anova(RmodelCMP3) # Reef_distance and AR_distance are insignificant
+Anova(RmodelCMP5) # YearGroup, Patch.type and DietH are all significant, and the interaction as well
+Anova(RmodelCMP6)
+Anova(RmodelCMP7) # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
 
-# Normality, heteroscedasticity with DHARMa
-Asim_resNB6 <- simulateResiduals(fittedModel = AmodelNB6, re.form = NULL)
-Asim_resNB7 <- simulateResiduals(fittedModel = AmodelNB7, re.form = NULL)
+# # Normality, heteroscedasticity with DHARMa
+Rsim_resCMP5 <- simulateResiduals(fittedModel = RmodelCMP5, re.form = NULL)
+Rsim_resCMP6 <- simulateResiduals(fittedModel = RmodelCMP6, re.form = NULL)
+Rsim_resCMP7 <- simulateResiduals(fittedModel = RmodelCMP7, re.form = NULL)
 
-# plot(Asim_resNB6)
-plot(Asim_resNB7)
+# # plot residuals
+plot(Rsim_resCMP5)
+plot(Rsim_resCMP6)
+plot(Rsim_resCMP7)
+testResiduals(Rsim_resCMP5)
+
+testZeroInflation(Rsim_resCMP5) # <- Not significant
+testCategorical(Rsim_resCMP5, catPred = Richness$Depth.MLLW)
+testCategorical(Rsim_resCMP5, catPred = Richness$YearGroup)
+testCategorical(Rsim_resCMP5, catPred = Richness$Patch.type)
+testCategorical(Rsim_resCMP5, catPred = Richness$DietH)
 ```
-## Plots and post-hoc
-```{r}
-# # 1. YearGroup main effect
-# emm_year <- emmeans(AmodelNB7, ~ YearGroup, type = "response")
-# cld_year <- cld(emm_year, Letters = letters)
-# emm_year_df <- as.data.frame(cld_year)
-# emm_year_df$.group <- trimws(emm_year_df$.group)
 
+## Plots & post-hoc
+```{r}
 # 2. YearGroup:DietH interaction
-emm_diet <- emmeans(AmodelNB7, ~ YearGroup * DietH, type = "response")
+emm_diet <- emmeans(RmodelCMP7, ~ YearGroup * DietH, type = "response")
 cld_diet <- cld(emm_diet, by = "DietH", Letters = letters)
 emm_diet_df <- as.data.frame(cld_diet)
 emm_diet_df$.group <- trimws(emm_diet_df$.group)
 
 # 3. YearGroup:Patch.type interaction
-emm_patch <- emmeans(AmodelNB7, ~ YearGroup * Patch.type, type = "response")
+emm_patch <- emmeans(RmodelCMP7, ~ YearGroup * Patch.type, type = "response")
 cld_patch <- cld(emm_patch, by = "Patch.type", Letters = letters)
 emm_patch_df <- as.data.frame(cld_patch)
 emm_patch_df$.group <- trimws(emm_patch_df$.group)
 
-# Count observations for each combination (for N values in figure description in paper)
-n_values <- Abundance %>%
-  group_by(YearGroup, Patch.type) %>%
-  summarise(N = n_distinct(SurveyNo), .groups = 'drop')
-print(n_values)
-
-# # Plot 1: Yeargroup main effect
-# Aplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
-#   geom_point(size = 3, color = "black") +
-#   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
-#                 width = 0.2) +
-#   geom_text(aes(label = .group, y = asymp.UCL), 
-#             vjust = -0.5, 
-#             size = 4) +
-#   labs(x = "Year Group", y = expression(Fish ~ abundance ~ (m^-2)),
-#        title = "Herbivore fish abundance over time",
-#       subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
-#   theme_minimal(base_size = 12) +
-#   theme_bw()
-
 # Plot 2: Yeargroup x DietH interaction
-Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response*100, color = YearGroup, group = YearGroup)) +
+Rplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, color = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL*100),
+  geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 5,
+            size = 3,
             show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = expression(Abundance ~ (m^-2 ~ x ~ 100)), color = "Year Group",
-       title = "Herbivore fish abundance over time, by guild") +
+  labs(x = "Herbivore guild", y = "Species richness (S)", color = "Year Group") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
-# Plot 3: Yeargroup x Patch.type interaction
-Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response*100, color = YearGroup, group = YearGroup)) +
+# Plot 3: Yeargroup x patch.type interaction
+Rplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, color = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL*100),
+  geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 4.5,
+            size = 3,
             show.legend = FALSE) +
-  labs(x = "Patch type", y = expression(Abundance ~ (m^-2 ~ x ~ 100)), color = "Year Group",
-       title = "Herbivore fish abundance over time, by patch type") +
+  labs(x = "Patch type", y = "Species richness (S)", color = "Year Group") +
   theme_minimal(base_size = 12) +
   theme_bw()
 
-# Post-hoc
-# posthoc_year <- pairs(emm_year)
-# print("=== Plot 1: YearGroup comparisons ===")
-# # print(posthoc_year) <if you want to see all non-significant as well.
-# posthoc_year_df <- as.data.frame(posthoc_year)
-# posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
-# print("Significant comparisons:")
-# print(posthoc_year_sig)
-
+# # Post-hoc
 print("=== Plot 2: YearGroup comparisons within each Guild ===")
 posthoc_diet_within <- pairs(emm_diet, by = "DietH", adjust = "sidak")
 # print(posthoc_diet_within)
@@ -2145,134 +1776,8 @@ print("Significant comparisons:")
 print(posthoc_patch_between_sig)
 
 # Display plots
-# print(Aplot1)
-print(Aplot2)
-print(Aplot3)
-```
-## Old plots (Stacked)
-```{r}
-# Plot 4: YearGroup with stacked bars for DietH
-emm_df4 <- as.data.frame(emmeans(AmodelNB6, ~ YearGroup + DietH, type = "response"))
-
-# Get marginal means for YearGroup for the cld letters
-emm4_year <- emmeans(AmodelNB6, ~ YearGroup, type = "response")
-cld4_year <- cld(emm4_year, Letters = letters, adjust = "sidak") %>%
-  as.data.frame()
-
-# Calculate totals by summing across DietH
-emm4_totals <- emm_df4 %>%
-  group_by(YearGroup) %>%
-  summarise(
-    total = sum(response),
-    SE_total = sqrt(sum(SE^2)),  # Approximate SE by combining individual SEs
-    .groups = "drop"
-  ) %>%
-  mutate(
-    LCL = total - 1.96 * SE_total,  # 95% CI
-    UCL = total + 1.96 * SE_total
-  )
-
-# Add cld letters
-emm4_totals <- emm4_totals %>%
-  left_join(cld4_year[, c("YearGroup", ".group")], by = "YearGroup")
-
-# Reorder DietH by size (largest at bottom)
-emm_df4 <- emm_df4 %>%
-  group_by(YearGroup) %>%
-  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
-  ungroup()
-
-plot4 <- ggplot(emm_df4, aes(x = YearGroup, y = response, fill = DietH)) +
-  geom_bar(stat = "identity", width = 0.7) +
-  geom_errorbar(
-    data = emm4_totals,
-    aes(x = YearGroup, y = total, ymin = LCL, ymax = UCL),
-    inherit.aes = FALSE,
-    width = 0.25,
-    linewidth = 0.8
-  ) +
-  geom_text(
-    data = emm4_totals,
-    aes(x = YearGroup, y = UCL + 0.05*max(UCL), label = trimws(.group)),
-    inherit.aes = FALSE
-  ) +
-  scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +
-  labs(
-    x = "Yeargroup",
-    y = "Mean Abundance",
-    title = "Mean herbivore fish abundance by yeargroup and guild"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text = element_text(color = "black"),
-    panel.grid.major = element_line(color = "grey90"),
-    legend.title = element_text(face = "plain")
-  )
-
-# Plot 5: YearGroup on x-axis, faceted by Patch.type
-emm5df <- as.data.frame(emmeans(AmodelNB6, ~ YearGroup * Patch.type + DietH, type = "response"))
-
-# Get marginal means for cld
-emm5_year <- emmeans(AmodelNB6, ~ YearGroup | Patch.type, type = "response")
-cld5_year <- cld(emm5_year, Letters = letters, adjust = "sidak") %>%
-  as.data.frame()
-
-# Calculate totals by summing across DietH
-emm5_totals <- emm5_df %>%
-  group_by(YearGroup, Patch.type) %>%
-  summarise(
-    total = sum(response),
-    SE_total = sqrt(sum(SE^2)),  # Approximate SE by combining individual SEs
-    .groups = "drop"
-  ) %>%
-  mutate(
-    LCL = total - 1.96 * SE_total,  # 95% CI
-    UCL = total + 1.96 * SE_total
-  )
-
-# Add cld letters
-emm5_totals <- emm5_totals %>%
-  left_join(cld5_year[, c("YearGroup", "Patch.type", ".group")], by = c("YearGroup", "Patch.type"))
-
-# Reorder DietH (largest at bottom)
-emm5_df <- emm5_df %>%
-  group_by(YearGroup, Patch.type) %>%
-  mutate(DietH = fct_reorder(DietH, response, .desc = FALSE)) %>%
-  ungroup()
-
-plot5 <- ggplot(emm5_df, aes(x = YearGroup, y = response, fill = DietH)) +
-  geom_bar(stat = "identity", width = 0.7) +
-  geom_errorbar(
-    data = emm5_totals,
-    aes(x = YearGroup, y = total, ymin = LCL, ymax = UCL),
-    inherit.aes = FALSE,
-    width = 0.25,
-    linewidth = 0.8
-  ) +
-  geom_text(
-    data = emm5_totals,
-    aes(x = YearGroup, y = UCL + 0.05*max(UCL), label = trimws(.group)),
-    inherit.aes = FALSE,
-    size = 3
-  ) +
-  facet_wrap(~ Patch.type) +
-  scale_fill_brewer(palette = "Set2", name = "Herbivore guild") +
-  labs(
-    x = "Yeargroup",
-    y = "Mean Abundance",
-    title = "Mean herbivore fish abundance by yeargroup and patch type"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text = element_text(color = "black"),
-    panel.grid.major = element_line(color = "grey90"),
-    legend.title = element_text(face = "plain"),
-    strip.text = element_text(face = "plain")
-  )
-
-# Display plots
-print(plot4)
-print(plot5)
+print(Rplot2)
+print(Rplot3)
 ```
 # Ordination plots (With YearGroups combined)
 ```{r}
@@ -2551,8 +2056,8 @@ main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("193","175","170","144
   # scale_size_identity() +
   theme(axis.text = element_text(size = 12, colour = "black"),
         axis.title = element_text(size = 14),
-        legend.text = element_text(size = 12),
-        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 12),
         panel.background = element_blank(),
         panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2)) +
   labs(x = "NMDS1", y = "NMDS2", colour = "Patch.type", fill = "Patch.type") +
@@ -2583,7 +2088,7 @@ inset_plot <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2)) +
 # Combine with main plot
 final_plot <- ggdraw() +
   draw_plot(main_plot) +
-  draw_plot(inset_plot, x = 0.57, y = 0.65, width = 0.20, height = 0.30)
+  draw_plot(inset_plot, x = 0.55, y = 0.67, width = 0.20, height = 0.30)
 
 final_plot
 ```
@@ -2635,8 +2140,8 @@ main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("193","175","170","144
   ) +
   theme(axis.text = element_text(size = 12, colour = "black"),
         axis.title = element_text(size = 14),
-        legend.text = element_text(size = 12),
-        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 12),
         panel.background = element_blank(),
         panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2)) +
   labs(x = "NMDS1", y = "NMDS2", colour = "YearGroup", fill = "YearGroup") +
@@ -2667,7 +2172,7 @@ inset_plot2 <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2)) +
 # Combine with main plot
 final_plot2 <- ggdraw() +
   draw_plot(main_plot) +
-  draw_plot(inset_plot2, x = 0.57, y = 0.65, width = 0.20, height = 0.30)
+  draw_plot(inset_plot2, x = 0.54, y = 0.67, width = 0.20, height = 0.30)
 
 final_plot2
 ```
@@ -3228,10 +2733,10 @@ nMDSplot1
 # Figure compilation
 ```{r compilation}
 # Saving all ggplot plots
-plots <- c("Rplot1", "Rplot2", "Rplot3",
-           "Aplot1", "Aplot2", "Aplot3",
-           "MSplot1", "MSplot2", "MSplot3",
-           "Bplot1", "Bplot2", "Bplot3")
+plots <- c("Rplot2", "Rplot3",
+           "Aplot2", "Aplot3",
+           "MSplot2", "MSplot3",
+           "Bplot2", "Bplot3")
 
 for(p in plots){
   # Get the actual plot object by name
@@ -3273,7 +2778,16 @@ ggsave(
     dpi      = 600
   )
 
-# Saving nMDSplot1 (cowplot object) to same folders
+## Tiff
+ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "MSplot5.tiff"),
+      plot     = MSplot5,
+      width    = 16,
+      height   = 20,
+       units = "cm", 
+       dpi = 600,
+       compression = "lzw")
+
+# Saving nMDSplots (cowplot object) to same folders
 ## EMF
 emf(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "nMDSplot1.emf"),
     width = 7, height = 5)
@@ -3309,28 +2823,6 @@ tiff(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Resea
      width = 8, height = 6, units = "in", res = 600, compression = "lzw")
 print(final_plot2)
 dev.off()
-
-# Abundance, Mean size, and Biomass combined in one panel
-## AMSB1 plots - keep legends, remove titles, remove x-axis from top 3, add 10% y-expansion
-# Aplot1_notitle <- Aplot1 + 
-#   labs(title = NULL, subtitle = NULL, x = NULL) + 
-#   theme(axis.text.x = element_blank(), 
-#         axis.ticks.x = element_blank(),
-#         axis.text.y = element_text(size = 9, colour = "black")) +
-#   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2)))
-# 
-# MSplot1_notitle <- MSplot1 + 
-#   labs(title = NULL, subtitle = NULL, x = NULL) + 
-#   theme(axis.text.x = element_blank(), 
-#         axis.ticks.x = element_blank(),
-#         axis.text.y = element_text(size = 9, colour = "black")) +
-#   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2)))
-# 
-# Bplot1_notitle <- Bplot1 + 
-#   labs(title = NULL, subtitle = NULL) +
-#   theme(axis.text.x = element_text(size = 9, colour = "black"),
-#         axis.text.y = element_text(size = 9, colour = "black")) +
-#   scale_y_continuous(expand = expansion(mult = c(0.1, 0.2)))
 
 ## AMSB2 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
 Aplot2_notitle_nolegend <- Aplot2 + 
@@ -3376,21 +2868,25 @@ Bplot3_notitle_nolegend <- Bplot3 +
         axis.text.y = element_text(size = 10, colour = "black")) +
   scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
 
+# Richness combined plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
+Rplot2_notitle_nolegend <- Rplot2 + 
+  labs(title = NULL, subtitle = NULL) + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 10, colour = "black", angle = 0, hjust = 0.5),
+        axis.text.y = element_text(size = 10, colour = "black")) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
+
+Rplot3_notitle_nolegend <- Rplot3 + 
+  labs(title = NULL, subtitle = NULL) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 10, colour = "black", angle = 0, hjust = 0.5),
+        axis.text.y = element_text(size = 10, colour = "black")) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)))
+
 # Extract legend from one of the plots (e.g., Rplot2_notitle)
 legend_shared <- get_legend( Aplot2 + theme(legend.position = "top", 
           legend.direction = "horizontal",
           legend.spacing.x = unit(1, "cm")))
-
-# # Combine plots 1
-# AMSB1 <- plot_grid(Aplot1_notitle, MSplot1_notitle, Bplot1_notitle, 
-#                   nrow = 3, 
-#                   align = "v", 
-#                   rel_heights = c(1, 1, 1.15),
-#                   labels = c("A", "B", "C"), 
-#                   label_size = 18,
-#                   label_x = 0.1,
-#                   label_y = 1.0)
-# print(AMSB1)
 
 # Combine plots 2
 AMSB2_plots <- plot_grid(Aplot2_notitle_nolegend, MSplot2_notitle_nolegend, Bplot2_notitle_nolegend, 
@@ -3420,17 +2916,51 @@ AMSB3 <- plot_grid(legend_shared, AMSB3_plots,
                   rel_heights = c(0.05, 1))  
 print(AMSB3)
 
-# Save them
-# ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time.png"), 
-#        AMSB1, width = 8, height = 14, units = "cm", dpi = 600)
-# ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time.emf"), 
-#        AMSB1, width = 8, height = 14, units = "cm", device = "emf")
+# Combine plots richness
+R_plots <- plot_grid(Rplot2_notitle_nolegend, Rplot3_notitle_nolegend, 
+                  nrow = 2, 
+                  align = "v", 
+                  rel_heights = c(1, 1),
+                  labels = c("A", "B"), 
+                  label_size = 18,
+                  label_x = 0.00,
+                  label_y = 1.0,
+                  axis = "bt")
+Rcomb <- plot_grid(legend_shared, R_plots,
+                  nrow = 2, 
+                  rel_heights = c(0.05, 1))  
+print(Rcomb)
 
+# Combine NMDS plots
+# Extract panels without legends
+plot1_panel <- final_plot + theme(legend.position = "none")
+plot2_panel <- final_plot2 + theme(legend.position = "none")
+
+# Extract legends
+legend1 <- get_legend(final_plot)
+legend2 <- get_legend(final_plot2)
+
+# Create rows with plots and legends using different rel_widths
+row1 <- plot_grid(plot1_panel, legend1, rel_widths = c(7, 1), nrow = 1)
+row2 <- plot_grid(plot2_panel, legend2, rel_widths = c(7.7, 1), nrow = 1)
+
+# Combine rows
+NMDS_plots <- plot_grid(row1, row2,
+                        nrow = 2,
+                        align = "v",
+                        axis = "lr",
+                        labels = c("A", "B"),
+                        label_size = 18,
+                        label_x = 0.00,
+                        label_y = 1.0)
+print(NMDS_plots)
+
+# Save them
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_guild.png"), 
-       AMSB2, width = 21, height = 25, units = "cm", dpi = 600)
+       AMSB2, width = 16, height = 20, units = "cm", dpi = 600)
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_guild.emf"), 
-       AMSB2, width = 21, height = 25, units = "cm", device = "emf")
-ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_guild.tiff"),
+       AMSB2, width = 16, height = 20, units = "cm", device = "emf")
+ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_guild.tiff"),
        AMSB2, 
        width = 16, 
        height = 20, 
@@ -3439,11 +2969,31 @@ ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Res
        compression = "lzw")
 
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_patch.png"), 
-       AMSB3, width = 21, height = 25, units = "cm", dpi = 600)
+       AMSB3, width = 16, height = 20, units = "cm", dpi = 600)
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_patch.emf"), 
-       AMSB3, width = 21, height = 25, units = "cm", device = "emf")
+       AMSB3, width = 16, height = 20, units = "cm", device = "emf")
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_patch.tiff"),
        AMSB3, 
+       width = 16, 
+       height = 20, 
+       units = "cm", 
+       dpi = 600,
+       compression = "lzw")
+
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_richness.png"), 
+       Rcomb, width = 16, height = 10, units = "cm", dpi = 600)
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_richness.emf"), 
+       Rcomb, width = 16, height = 10, units = "cm", device = "emf")
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_richness.tiff"),
+       Rcomb, 
+       width = 16, 
+       height = 20, 
+       units = "cm", 
+       dpi = 600,
+       compression = "lzw")
+
+ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_NMDS.tiff"),
+       NMDS_plots, 
        width = 16, 
        height = 20, 
        units = "cm", 
