@@ -1,7 +1,7 @@
 =======
 title: Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size
 author: Jorn de Gelder
-date: 2/2/2026
+date: 4/2/2026
 ---
 
 # if on MSI laptop (Jorn)
@@ -43,6 +43,7 @@ library(multcomp) # for CLD
 library(multcompView) # for CLD
 library(purrr) # for centroid calc
 library(devEMF) # for saving plots
+library(pairwiseAdonis) # for nMDS pairwise comparison
 ```
 
 # Load RAW data (Only need to run after new raw data input: Takes about 30 mins)
@@ -947,11 +948,11 @@ testCategorical(Rsim_resCMP5, catPred = Richness$DietH)
 
 ## Plots & post-hoc
 ```{r}
-# 1. YearGroup main effect
-emm_year <- emmeans(RmodelCMP7, ~ YearGroup, type = "response")
-cld_year <- cld(emm_year, Letters = letters)
-emm_year_df <- as.data.frame(cld_year)
-emm_year_df$.group <- trimws(emm_year_df$.group)
+# # 1. YearGroup main effect
+# emm_year <- emmeans(RmodelCMP7, ~ YearGroup, type = "response")
+# cld_year <- cld(emm_year, Letters = letters)
+# emm_year_df <- as.data.frame(cld_year)
+# emm_year_df$.group <- trimws(emm_year_df$.group)
 
 # 2. YearGroup:DietH interaction
 emm_diet <- emmeans(RmodelCMP7, ~ YearGroup * DietH, type = "response")
@@ -965,19 +966,19 @@ cld_patch <- cld(emm_patch, by = "Patch.type", Letters = letters)
 emm_patch_df <- as.data.frame(cld_patch)
 emm_patch_df$.group <- trimws(emm_patch_df$.group)
 
-# Plot 1: YearGroup main effect
-Rplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
-  geom_point(size = 3, color = "black") +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
-                width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL), 
-            vjust = -0.5, 
-            size = 3) +
-  labs(x = "Year Group", y = "Species richness (S)",
-      title = "Herbivore species richness per survey over time",
-      subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
-  theme_minimal(base_size = 12) +
-  theme_bw()
+# # Plot 1: YearGroup main effect
+# Rplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
+#   geom_point(size = 3, color = "black") +
+#   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
+#                 width = 0.2) +
+#   geom_text(aes(label = .group, y = asymp.UCL), 
+#             vjust = -0.5, 
+#             size = 3) +
+#   labs(x = "Year Group", y = "Species richness (S)",
+#       title = "Herbivore species richness per survey over time",
+#       subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
+#   theme_minimal(base_size = 12) +
+#   theme_bw()
 
 # Plot 2: Yeargroup x DietH interaction
 Rplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, color = YearGroup, group = YearGroup)) +
@@ -1009,17 +1010,17 @@ Rplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, color = YearGro
   theme_minimal(base_size = 12) +
   theme_bw()
 
-# Post-hoc
-posthoc_year <- pairs(emm_year)
-print("=== Plot 1: YearGroup comparisons ===")
-# print(posthoc_year) <if you want to see all non-significant as well.
-posthoc_year_df <- as.data.frame(posthoc_year)
-posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_year_sig)
+# # Post-hoc
+# posthoc_year <- pairs(emm_year)
+# print("=== Plot 1: YearGroup comparisons ===")
+# # print(posthoc_year) <if you want to see all non-significant as well.
+# posthoc_year_df <- as.data.frame(posthoc_year)
+# posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
+# print("Significant comparisons:")
+# print(posthoc_year_sig)
 
 print("=== Plot 2: YearGroup comparisons within each Guild ===")
-posthoc_diet_within <- pairs(emm_diet, by = "DietH")
+posthoc_diet_within <- pairs(emm_diet, by = "DietH", adjust = "sidak")
 # print(posthoc_diet_within)
 posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
 posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05, ]
@@ -1027,7 +1028,7 @@ print("Significant comparisons:")
 print(posthoc_diet_within_sig)
 
 print("=== Plot 2: Guild comparisons within each YearGroup ===")
-posthoc_diet_between <- pairs(emm_diet, by = "YearGroup")
+posthoc_diet_between <- pairs(emm_diet, by = "YearGroup", adjust = "sidak")
 # print(posthoc_diet_between)
 posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
 posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
@@ -1035,7 +1036,7 @@ print("Significant comparisons:")
 print(posthoc_diet_between_sig)
 
 print("=== Plot 3: YearGroup comparisons within each Patch type ===")
-posthoc_patch_within <- pairs(emm_patch, by = "Patch.type")
+posthoc_patch_within <- pairs(emm_patch, by = "Patch.type", adjust = "sidak")
 # print(posthoc_patch_within)
 posthoc_patch_within_df <- as.data.frame(posthoc_patch_within)
 posthoc_patch_within_sig <- posthoc_patch_within_df[posthoc_patch_within_df$p.value < 0.05, ]
@@ -1043,7 +1044,7 @@ print("Significant comparisons:")
 print(posthoc_patch_within_sig)
 
 print("=== Plot 3: Patch type comparisons within each YearGroup ===")
-posthoc_patch_between <- pairs(emm_patch, by = "YearGroup")
+posthoc_patch_between <- pairs(emm_patch, by = "YearGroup", adjust = "sidak")
 # print(posthoc_patch_between)
 posthoc_patch_between_df <- as.data.frame(posthoc_patch_between)
 posthoc_patch_between_sig <- posthoc_patch_between_df[posthoc_patch_between_df$p.value < 0.05, ]
@@ -1387,7 +1388,7 @@ Bplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response)) +
   theme_bw()
 
 # Post-hoc
-posthoc_year <- pairs(emm_year)
+posthoc_year <- pairs(emm_year, adjust = "sidak")
 print("=== Plot 1: YearGroup comparisons ===")
 # print(posthoc_year) <if you want to see all non-significant as well.
 posthoc_year_df <- as.data.frame(posthoc_year)
@@ -1396,7 +1397,7 @@ print("Significant comparisons:")
 print(posthoc_year_sig)
 
 print("=== Plot 2: YearGroup comparisons within each Guild ===")
-posthoc_diet_within <- pairs(emm_diet, by = "DietH")
+posthoc_diet_within <- pairs(emm_diet, by = "DietH", adjust = "sidak")
 # print(posthoc_diet_within)
 posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
 posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05, ]
@@ -1404,7 +1405,7 @@ print("Significant comparisons:")
 print(posthoc_diet_within_sig)
 
 print("=== Plot 2: Guild comparisons within each YearGroup ===")
-posthoc_diet_between <- pairs(emm_diet, by = "YearGroup")
+posthoc_diet_between <- pairs(emm_diet, by = "YearGroup", adjust = "sidak")
 # print(posthoc_diet_between)
 posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
 posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
@@ -1412,10 +1413,10 @@ print("Significant comparisons:")
 print(posthoc_diet_between_sig)
 
 print("=== Plot 3: Patch type comparisons ===")
-posthoc_patch <- pairs(emm_patch)
+posthoc_patch <- pairs(emm_patch, adjust = "sidak")
 # print(posthoc_patch_between)
-posthoc_patch_df <- as.data.frame(posthoc_patch_between)
-posthoc_patch_sig <- posthoc_patch_between_df[posthoc_patch_between_df$p.value < 0.05, ]
+posthoc_patch_df <- as.data.frame(posthoc_patch)
+posthoc_patch_sig <- posthoc_patch_df[posthoc_patch_df$p.value < 0.05, ]
 print("Significant comparisons:")
 print(posthoc_patch_sig)
 
@@ -1747,8 +1748,13 @@ MSplot1 <- ggplot(emm1_df, aes(x = YearGroup, y = response)) +
 
 # Plot 2: Yeargroup x DietH interaction
 emm2 <- emmeans(MSmodelLoglink6, ~ YearGroup * DietH, type = "response")
-cld_results <- cld(emm2, by = "DietH", Letters = letters)
+cld_results <- cld(emm2, by = "DietH", Letters = letters, adjust = "sidak")
 emm2_df <- as.data.frame(cld_results)
+
+n_values <- Meansize %>%
+  group_by(YearGroup, DietH) %>%
+  summarise(N = n_distinct(SurveyNo), .groups = 'drop')
+print(n_values)
 
 # Trim whitespace from the compact letter display
 emm2_df$.group <- trimws(emm2_df$.group)
@@ -1778,17 +1784,23 @@ cld3 <- cld(emm3, Letters = letters, adjust = "sidak")
 emm3_df <- as.data.frame(cld3)
 emm3_df$.group <- trimws(emm3_df$.group)
 
+# Count observations for each combination (for N values in figure description in paper)
+n_values <- Meansize %>%
+  group_by(Patch.type) %>%
+  summarise(N = n_distinct(SurveyNo), .groups = 'drop')
+print(n_values)
+
 MSplot3 <- ggplot(emm3_df, aes(x = Patch.type, y = response)) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), width = 0.2) +
   geom_point(size = 3) +
-  geom_text(aes(label = .group, y = asymp.UCL), vjust = -0.5, size = 4) +
+  # geom_text(aes(label = .group, y = asymp.UCL), vjust = -0.5, size = 4) +
   labs(x = "Patch type", y = "Mean size (cm)",
        title = "Mean herbivore fish size by patch type",
         subtitle = "Main effect (YearGroup × Guild × Patch.type interaction significant)") +
   theme_bw()
 
 # Post-hoc
-posthoc_year <- pairs(emm1)
+posthoc_year <- pairs(emm1, adjust = "sidak")
 print("=== Plot 1: YearGroup comparisons ===")
 # print(posthoc_year) <if you want to see all non-significant as well.
 posthoc_year_df <- as.data.frame(posthoc_year)
@@ -1797,22 +1809,22 @@ print("Significant comparisons:")
 print(posthoc_year_sig)
 
 print("=== Plot 2: YearGroup comparisons within each Guild ===")
-posthoc_diet_within <- pairs(emm2, by = "DietH")
-# print(posthoc_diet_within)
+posthoc_diet_within <- pairs(emm2, by = "DietH", adjust = "sidak")
+print(posthoc_diet_within)
 posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
 posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05, ]
 print("Significant comparisons:")
 print(posthoc_diet_within_sig)
 
 print("=== Plot 2: Guild comparisons within each YearGroup ===")
-posthoc_diet_between <- pairs(emm2, by = "YearGroup")
+posthoc_diet_between <- pairs(emm2, by = "YearGroup", adjust = "sidak")
 # print(posthoc_diet_between)
 posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
 posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
 print("Significant comparisons:")
 print(posthoc_diet_between_sig)
 
-posthoc_patch <- pairs(emm3)
+posthoc_patch <- pairs(emm3, adjust = "sidak")
 print("=== Plot 3: Patch type comparisons ===")
 print(posthoc_patch) # <if you want to see all non-significant as well.
 posthoc_patch_df <- as.data.frame(posthoc_patch)
@@ -2021,11 +2033,11 @@ plot(Asim_resNB7)
 ```
 ## Plots and post-hoc
 ```{r}
-# 1. YearGroup main effect
-emm_year <- emmeans(AmodelNB7, ~ YearGroup, type = "response")
-cld_year <- cld(emm_year, Letters = letters)
-emm_year_df <- as.data.frame(cld_year)
-emm_year_df$.group <- trimws(emm_year_df$.group)
+# # 1. YearGroup main effect
+# emm_year <- emmeans(AmodelNB7, ~ YearGroup, type = "response")
+# cld_year <- cld(emm_year, Letters = letters)
+# emm_year_df <- as.data.frame(cld_year)
+# emm_year_df$.group <- trimws(emm_year_df$.group)
 
 # 2. YearGroup:DietH interaction
 emm_diet <- emmeans(AmodelNB7, ~ YearGroup * DietH, type = "response")
@@ -2039,19 +2051,25 @@ cld_patch <- cld(emm_patch, by = "Patch.type", Letters = letters)
 emm_patch_df <- as.data.frame(cld_patch)
 emm_patch_df$.group <- trimws(emm_patch_df$.group)
 
-# Plot 1: Yeargroup main effect
-Aplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
-  geom_point(size = 3, color = "black") +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
-                width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL), 
-            vjust = -0.5, 
-            size = 4) +
-  labs(x = "Year Group", y = expression(Fish ~ abundance ~ (m^-2)),
-       title = "Herbivore fish abundance over time",
-      subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
-  theme_minimal(base_size = 12) +
-  theme_bw()
+# Count observations for each combination (for N values in figure description in paper)
+n_values <- Abundance %>%
+  group_by(YearGroup, Patch.type) %>%
+  summarise(N = n_distinct(SurveyNo), .groups = 'drop')
+print(n_values)
+
+# # Plot 1: Yeargroup main effect
+# Aplot1 <- ggplot(emm_year_df, aes(x = YearGroup, y = response)) +
+#   geom_point(size = 3, color = "black") +
+#   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
+#                 width = 0.2) +
+#   geom_text(aes(label = .group, y = asymp.UCL), 
+#             vjust = -0.5, 
+#             size = 4) +
+#   labs(x = "Year Group", y = expression(Fish ~ abundance ~ (m^-2)),
+#        title = "Herbivore fish abundance over time",
+#       subtitle = "Main effect (YearGroup × Guild and YearGroup × Patch.type interactions significant)") +
+#   theme_minimal(base_size = 12) +
+#   theme_bw()
 
 # Plot 2: Yeargroup x DietH interaction
 Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response*100, color = YearGroup, group = YearGroup)) +
@@ -2086,16 +2104,16 @@ Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response*100, color = Yea
   theme_bw()
 
 # Post-hoc
-posthoc_year <- pairs(emm_year)
-print("=== Plot 1: YearGroup comparisons ===")
-# print(posthoc_year) <if you want to see all non-significant as well.
-posthoc_year_df <- as.data.frame(posthoc_year)
-posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
-print("Significant comparisons:")
-print(posthoc_year_sig)
+# posthoc_year <- pairs(emm_year)
+# print("=== Plot 1: YearGroup comparisons ===")
+# # print(posthoc_year) <if you want to see all non-significant as well.
+# posthoc_year_df <- as.data.frame(posthoc_year)
+# posthoc_year_sig <- posthoc_year_df[posthoc_year_df$p.value < 0.05, ]
+# print("Significant comparisons:")
+# print(posthoc_year_sig)
 
 print("=== Plot 2: YearGroup comparisons within each Guild ===")
-posthoc_diet_within <- pairs(emm_diet, by = "DietH")
+posthoc_diet_within <- pairs(emm_diet, by = "DietH", adjust = "sidak")
 # print(posthoc_diet_within)
 posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
 posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05, ]
@@ -2103,7 +2121,7 @@ print("Significant comparisons:")
 print(posthoc_diet_within_sig)
 
 print("=== Plot 2: Guild comparisons within each YearGroup ===")
-posthoc_diet_between <- pairs(emm_diet, by = "YearGroup")
+posthoc_diet_between <- pairs(emm_diet, by = "YearGroup", adjust = "sidak")
 # print(posthoc_diet_between)
 posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
 posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
@@ -2111,7 +2129,7 @@ print("Significant comparisons:")
 print(posthoc_diet_between_sig)
 
 print("=== Plot 3: YearGroup comparisons within each Patch type ===")
-posthoc_patch_within <- pairs(emm_patch, by = "Patch.type")
+posthoc_patch_within <- pairs(emm_patch, by = "Patch.type", adjust = "sidak")
 # print(posthoc_patch_within)
 posthoc_patch_within_df <- as.data.frame(posthoc_patch_within)
 posthoc_patch_within_sig <- posthoc_patch_within_df[posthoc_patch_within_df$p.value < 0.05, ]
@@ -2119,7 +2137,7 @@ print("Significant comparisons:")
 print(posthoc_patch_within_sig)
 
 print("=== Plot 3: Patch type comparisons within each YearGroup ===")
-posthoc_patch_between <- pairs(emm_patch, by = "YearGroup")
+posthoc_patch_between <- pairs(emm_patch, by = "YearGroup", adjust = "sidak")
 # print(posthoc_patch_between)
 posthoc_patch_between_df <- as.data.frame(posthoc_patch_between)
 posthoc_patch_between_sig <- posthoc_patch_between_df[posthoc_patch_between_df$p.value < 0.05, ]
@@ -2127,7 +2145,7 @@ print("Significant comparisons:")
 print(posthoc_patch_between_sig)
 
 # Display plots
-print(Aplot1)
+# print(Aplot1)
 print(Aplot2)
 print(Aplot3)
 ```
@@ -2323,7 +2341,9 @@ rm(survey_meta)
 
 BiomassNMDS_exclOUT <- BiomassNMDS[-c(147), ]
 BiomassNMDS_data_exclOUT <- BiomassNMDS_data[-c(147), ]
-
+```
+## Statistical models
+```{r}
 # PERMANOVA
 # Bray-Curtis distance
 bray_dist <- vegdist(BiomassNMDS_data, method = "bray")
@@ -2340,8 +2360,8 @@ disp <- betadisper(bray_dist, BiomassNMDS$Patch.type)
 disp_anova <- anova(disp)
 print(disp_anova)
 
-# PERMANOVA without Outliers (sensitivity analysis)
-# Bray-Curtis distance without Outliers (sensitivity analysis)
+# PERMANOVA without outliers (sensitivity analysis)
+# Bray-Curtis distance without outliers (sensitivity analysis)
 bray_dist <- vegdist(BiomassNMDS_data_exclOUT, method = "bray")
 
 ## Adonis
@@ -2351,51 +2371,30 @@ adonis_results <- adonis2(BiomassNMDS_data_exclOUT ~ Patch.type,
                           permutations = 999)
 print(adonis_results)
 
-## Check homogeneity of dispersions without Outliers (sensitivity analysis)
+## Check homogeneity of dispersions without outliers (sensitivity analysis)
 disp <- betadisper(bray_dist, BiomassNMDS_exclOUT$Patch.type)
 disp_anova <- anova(disp)
 print(disp_anova)
 
-## Post-hoc manual pairwise PERMANOVA
-groups <- levels(BiomassNMDS$Patch.type)
-results <- data.frame(
-  Group1 = character(),
-  Group2 = character(),
-  F = numeric(),
-  R2 = numeric(),
-  p.value = numeric(),
-  stringsAsFactors = FALSE
-)
+## Post-hoc pairwise PERMANOVA for patch.type
+pairwise_results <- pairwise.adonis(
+  x = bray_dist,  
+  factors = BiomassNMDS_exclOUT$Patch.type,
+  p.adjust.m = "bonferroni")
+print(pairwise_results)
 
-## Pairwise manually, as pairwiseAdonis doesn't work..
-for (i in 1:(length(groups)-1)) {
-  for (j in (i+1):length(groups)) {
-    sel <- BiomassNMDS$Patch.type %in% c(groups[i], groups[j])
-    dist_sub <- vegdist(BiomassNMDS_data[sel, ], method = "bray")
-    grp_sub <- BiomassNMDS$Patch.type[sel]
-    
-    res <- adonis2(dist_sub ~ grp_sub, permutations = 999)
-    
-    results <- rbind(
-      results,
-      data.frame(
-        Group1 = groups[i],
-        Group2 = groups[j],
-        F = res$F[1],
-        R2 = res$R2[1],
-        p.value = res$`Pr(>F)`[1]
-      )
-    )
-  }
-}
-
-results <- results %>% mutate(p.adj = p.adjust(p.value, method = "BH"))
-results
+## Post-hoc pairwise PERMANOVA for year group
+pairwise_results <- pairwise.adonis(
+  x = bray_dist,  
+  factors = BiomassNMDS_exclOUT$YearGroup,
+  p.adjust.m = "bonferroni")
+print(pairwise_results)
 
 # Make NMDS plot
 nmds = metaMDS(BiomassNMDS_data_exclOUT, distance = "bray")
 site.scores = as.data.frame(scores(nmds)$sites)
 site.scores$Patch.type = BiomassNMDS_exclOUT$Patch.type
+site.scores$YearGroup = BiomassNMDS_exclOUT$YearGroup
 site.scores$SampleID <- rownames(site.scores)
 species.scores <- as.data.frame(scores(nmds, display = "species"))
                         
@@ -2414,16 +2413,38 @@ guild_lookup <- fish %>%
   dplyr::distinct() %>%
   dplyr::rename(Guild = DietH)
 
+species.scores$Species <- rownames(species.scores)
+species_guild <- merge(species.scores, guild_lookup, by = "Species")
+
+# Calculate total biomass per species across all samples
+species_biomass <- colSums(BiomassNMDS_data_exclOUT)  # Total biomass per species
+species_biomass_df <- data.frame(
+  Species = names(species_biomass),
+  Biomass = species_biomass
+)
+species_guild <- merge(species_guild, species_biomass_df, by = "Species")
+
+# Calculate centroids and total biomass for each guild
+guild_centroids <- species_guild %>%
+  group_by(Guild) %>%
+  summarise(
+    centroid_NMDS1 = mean(NMDS1),
+    centroid_NMDS2 = mean(NMDS2),
+    total_biomass = sum(Biomass, na.rm = TRUE)
+  )
+
+guild_centroids$font_size <- scales::rescale(guild_centroids$total_biomass, to = c(3, 9))
+
 ## Make guild-level biomass matrix
 guild_biomass <- BiomassNMDS_data_exclOUT %>%
-  t() %>%
-  as.data.frame() %>%
-  rownames_to_column("Species") %>%
-  left_join(guild_lookup, by = "Species") %>%
-  group_by(Guild) %>%
-  summarise(across(-Species, sum)) %>%
-  column_to_rownames("Guild") %>%
-  t()  # transpose so rows = sites, cols = guilds
+ t() %>%
+ as.data.frame() %>%
+ rownames_to_column("Species") %>%
+ left_join(guild_lookup, by = "Species") %>%
+ group_by(Guild) %>%
+ summarise(across(-Species, sum)) %>%
+ column_to_rownames("Guild") %>%
+ t()  # transpose so rows = sites, cols = guilds
 
 ## Use envfit for the vectors
 guild_envfit <- envfit(nmds, guild_biomass, permutations = 999)
@@ -2431,7 +2452,7 @@ print(guild_envfit)
 vectors <- as.data.frame(scores(guild_envfit, display = "vectors"))
 vectors$Guild <- rownames(vectors)
 vectors_segments <- vectors %>%
-  mutate(x = 0, y = 0, xend = NMDS1, yend = NMDS2)
+ mutate(x = 0, y = 0, xend = NMDS1, yend = NMDS2)
 
 pvals <- guild_envfit$vectors$pvals
 vectors_segments$pval <- pvals
@@ -2473,11 +2494,11 @@ ggplot(site.scores,aes(x = NMDS1, y = NMDS2)) +
   scale_colour_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733")) +
   scale_fill_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733"))
 ```
-## Plots without outlier, but with inset
+## Inset plot for Patch.type 
 ```{r}
-# Start from full data and null out the 3 outliers only for ellipse grouping
+# Start from full data and null out the outliers only for ellipse grouping
 data_ell <- site.scores
-data_ell$Patch.type[data_ell$SampleID %in% c("193","175","170","144", "163", "88")] <- NA  # mask them, don't drop
+data_ell$Patch.type[data_ell$SampleID %in% c("144", "163","193","175","170","88")] <- NA  # mask them, don't drop
 
 # Now run ordiellipse with a full-length grouping vector
 ell <- ordiellipse(
@@ -2488,7 +2509,7 @@ ell <- ordiellipse(
   draw = "none"
 )
 
-vectorfactor <- 0.50
+vectorfactor <- 0.3
 
 ellipse_df <- do.call(rbind, lapply(names(ell), function(g) {
   df <- as.data.frame(
@@ -2513,12 +2534,21 @@ main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("193","175","170","144
   ) +
   geom_text(
     data = vectors_segments_sig,
-    aes(x = xend* vectorfactor * 1.05, y = yend * vectorfactor * 1.05, label = Guild),
+    aes(x = xend* vectorfactor * 1.3, y = yend * vectorfactor * 1.3, label = Guild),
     colour = "red",
     hjust = 0.5,
     vjust = -0.5,
     inherit.aes = FALSE
   ) +
+  # geom_text(
+  #   data = guild_centroids,
+  #   aes(x = centroid_NMDS1, y = centroid_NMDS2, label = Guild, size = font_size),
+  #   colour = "black",
+  #   fontface = "plain",
+  #   inherit.aes = FALSE#,
+  #   #show.legend = FALSE
+  # ) +
+  # scale_size_identity() +
   theme(axis.text = element_text(size = 12, colour = "black"),
         axis.title = element_text(size = 14),
         legend.text = element_text(size = 12),
@@ -2556,6 +2586,90 @@ final_plot <- ggdraw() +
   draw_plot(inset_plot, x = 0.57, y = 0.65, width = 0.20, height = 0.30)
 
 final_plot
+```
+## Inset plot for YearGroup
+```{r}
+# Start from full data and null out the 3 outliers only for ellipse grouping
+data_ell <- site.scores
+data_ell$YearGroup[data_ell$SampleID %in% c("193","175","170","144", "163", "88")] <- NA  # mask them, don't drop
+
+# Now run ordiellipse with a full-length grouping vector
+ell <- ordiellipse(
+  nmds,
+  groups = data_ell$YearGroup,
+  kind = "se",
+  conf = 0.99,
+  draw = "none"
+)
+
+vectorfactor <- 0.3
+
+ellipse_df <- do.call(rbind, lapply(names(ell), function(g) {
+  df <- as.data.frame(
+    vegan:::veganCovEllipse(ell[[g]]$cov, ell[[g]]$center, sqrt(qchisq(0.99, df = 2)))
+  )
+  colnames(df) <- c("NMDS1", "NMDS2")
+  df$YearGroup <- g
+  df
+}))
+
+main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("193","175","170","144", "163", "88"))), 
+        aes(x = NMDS1, y = NMDS2)) +
+  geom_point(size = 3, aes(colour = YearGroup)) +
+  geom_polygon(data = ellipse_df, aes(x = NMDS1, y = NMDS2, fill = YearGroup),
+               alpha = 0.40, colour = NA) +
+    geom_segment(
+    data = vectors_segments_sig,
+    aes(x = x, y = y, xend = xend * vectorfactor, yend = yend * vectorfactor),
+    arrow = arrow(length = unit(0.25, "cm")),
+    colour = "red",
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = vectors_segments_sig,
+    aes(x = xend* vectorfactor * 1.3, y = yend * vectorfactor * 1.3, label = Guild),
+    colour = "red",
+    hjust = 0.5,
+    vjust = -0.5,
+    inherit.aes = FALSE
+  ) +
+  theme(axis.text = element_text(size = 12, colour = "black"),
+        axis.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        panel.background = element_blank(),
+        panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2)) +
+  labs(x = "NMDS1", y = "NMDS2", colour = "YearGroup", fill = "YearGroup") +
+  scale_colour_manual(values = c("#B0E54D", "lightblue", "#EC86BF")) +
+  scale_fill_manual(values = c("#B0E54D", "lightblue", "#EC86BF"))
+
+# Create a column for coloring
+site.scores$InsetColor <- ifelse(site.scores$SampleID %in% c("193","175","170","144", "163", "88"),
+                                 as.character(site.scores$YearGroup), "Other")
+
+# Define colors for Year Group
+patch_colors2 <- c("#B0E54D", "lightblue", "#EC86BF")
+names(patch_colors2) <- c("2021–2022", "2021–2022", "2025") 
+inset_colors2 <- c("Other" = "lightgrey", patch_colors2)
+
+# Inset plot
+inset_plot2 <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(size = 2, aes(colour = InsetColor)) +
+  scale_colour_manual(values = inset_colors2) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8)
+  )
+
+# Combine with main plot
+final_plot2 <- ggdraw() +
+  draw_plot(main_plot) +
+  draw_plot(inset_plot2, x = 0.57, y = 0.65, width = 0.20, height = 0.30)
+
+final_plot2
 ```
 # Ordination plots (with YearGroups splitted)
 ```{r}
@@ -2883,7 +2997,6 @@ vectors_segments <- bind_rows(vectors_all) %>%
   mutate(x = 0, y = 0, xend = NMDS1, yend = NMDS2)
 vectors_segments_sig <- subset(vectors_segments, pval < 0.05)
 ```
-
 ## Plots with outlier
 ``` {r}
 ggplot(site.scores,aes(x = NMDS1, y = NMDS2)) +
@@ -3163,20 +3276,38 @@ ggsave(
 # Saving nMDSplot1 (cowplot object) to same folders
 ## EMF
 emf(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "nMDSplot1.emf"),
-    width = 15, height = 5)
-print(nMDSplot1)
+    width = 7, height = 5)
+print(final_plot)
 dev.off()
 
 ## PNG
 png(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot1.png"),
-    width = 15, height = 5, units = "in", res = 600)
-print(nMDSplot1)
+    width = 7, height = 5, units = "in", res = 600)
+print(final_plot)
 dev.off()
 
 ## Tiff
 tiff(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "nMDSplot1.tiff"),
-     width = 16, height = 6, units = "in", res = 600, compression = "lzw")
-print(nMDSplot1)
+     width = 8, height = 6, units = "in", res = 600, compression = "lzw")
+print(final_plot)
+dev.off()
+
+## EMF
+emf(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "nMDSplot2.emf"),
+    width = 7, height = 5)
+print(final_plot2)
+dev.off()
+
+## PNG
+png(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot2.png"),
+    width = 7, height = 5, units = "in", res = 600)
+print(final_plot2)
+dev.off()
+
+## Tiff
+tiff(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "nMDSplot2.tiff"),
+     width = 8, height = 6, units = "in", res = 600, compression = "lzw")
+print(final_plot2)
 dev.off()
 
 # Abundance, Mean size, and Biomass combined in one panel
