@@ -1,7 +1,7 @@
 =======
 title: Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size
 author: Jorn de Gelder
-date: 4/2/2026
+date: 10/2/2026
 ---
 
 # if on MSI laptop (Jorn)
@@ -2779,7 +2779,7 @@ ggsave(
   )
 
 ## Tiff
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "MSplot5.tiff"),
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "MSplot5.tiff"),
       plot     = MSplot5,
       width    = 16,
       height   = 20,
@@ -2960,7 +2960,7 @@ ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Res
        AMSB2, width = 16, height = 20, units = "cm", dpi = 600)
 ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_guild.emf"), 
        AMSB2, width = 16, height = 20, units = "cm", device = "emf")
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_guild.tiff"),
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_guild.tiff"),
        AMSB2, 
        width = 16, 
        height = 20, 
@@ -2992,11 +2992,44 @@ ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Res
        dpi = 600,
        compression = "lzw")
 
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_NMDS.tiff"),
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_NMDS.tiff"),
        NMDS_plots, 
        width = 16, 
        height = 20, 
        units = "cm", 
        dpi = 600,
        compression = "lzw")
+```
+
+# Survey and species tables
+``` {r}
+## Survey table
+surveylist <- fish %>% distinct(fish$SurveyNo, .keep_all = TRUE)
+surveylist <- surveylist[c("SurveyNo", "Observer","Date", "YearGroup", "Transect")]
+surveylist <- surveylist %>%
+  group_by(YearGroup, Observer) %>%
+  summarise(n_surveys = n(), .groups = 'drop')
+
+## Species list
+specieslist_sub <- as.data.frame(unique(fish$Species))
+colnames(specieslist_sub) <- "Species"
+
+specieslist_off <- as.data.frame(read_excel("Raw data/SpeciesList_2025-11.xlsx", sheet = "SpeciesList"))
+specieslist_off$Species <- sub("\\.", "", specieslist_off$Species) # Remove points from species names
+specieslist_off <- dplyr::select(specieslist_off, c("Family","Species", "Diet", "DietH"))
+famspeciestmp <- left_join(specieslist_sub, specieslist_off)
+famspeciestmp <- famspeciestmp[!grepl(" sp$", famspeciestmp$Species), ]
+
+famspeciestmp <- famspeciestmp[order(famspeciestmp$Family),]
+famspecies <- dplyr::select(famspeciestmp, c("Family","Species"))
+
+## Herbivore species list
+herbspecies <- famspeciestmp[!famspeciestmp$DietH %in% c("Other"), ]
+colnames(herbspecies)[4] <- "Guild"
+herbspecies <- herbspecies[order(herbspecies$Guild),]
+herbspecies <- dplyr::select(herbspecies, c("Guild","Species"))
+
+## Save to excel for Word tables
+write.xlsx(famspecies, "C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Content/Specieslist_report.xlsx")
+write.xlsx(herbspecies,"C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Content/Herbivorelist_report.xlsx")
 ```
