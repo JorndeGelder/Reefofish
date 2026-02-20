@@ -1,56 +1,37 @@
-=======
+---
 title: Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size
 author: Jorn de Gelder
-date: 19/2/2026
+date: 20/2/2026
 ---
-
-# if on MSI laptop (Jorn)
-setwd("C:/Users/Jorn de Gelder/Documents/Thesis R")
-
 # Setup
 ```{r setup}
 rm(list=ls()) # Clear workspace
 knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
 options(scipen = 99) # Have all numbers in non-scientific notation
 
-library(readxl) # Join data frames (vlookup)
-library(cowplot) # Combine plots
-library(patchwork)
-library(data.table)
-library(ggthemes) # pretty plots
-library(flextable) # Layout word table
-library(tidyverse) # Beta regression
-library(vegan) # Export Excel
-library(gridExtra)
-library(emmeans) # Select text from string
-library(lme4)
-library(lmerTest) # GLS
-library(officer) # Move table into word
-library(gridGraphics) # Combine base and ggplots
+library(readxl) # get data from Excel
+library(openxlsx) # write Excel
 library(tidyxl) # Read in coloured cells Excel
-library(openxlsx)
-library(car) # glm model validation
-library(viridis) # Convert data from wide to long
-library(writexl) # Export Excel
 library(janitor) # Excel functions
+library(data.table) # converting list to data
 library(arrow) # Write & read Parquet
-library(ggpubr) # for checking normality
-library(ggeffects) # for visualization
-library(ggpattern)
-library(ggrepel)
+
+library(tidyverse) # summarizing / selecting / filtering
 library(glmmTMB) #negative binomial
+library(car) # Anova for model validation
 library(DHARMa) #for checking NB & CMP GLMM
-library(robustlmm)
-library(multcomp) # for CLD
-library(multcompView) # for CLD
-library(purrr) # for centroid calc
-library(devEMF) # for saving plots
+library(emmeans) # estimated marginal means for modelling
+
+library(vegan) # for NMDS
 library(pairwiseAdonis) # for nMDS pairwise comparison
+
+library(multcomp) # for CLD
+library(cowplot) # Combine plots
+library(ggpattern) # patterns for colorblindness
+library(ggrepel) # separating texts if overlapping
 ```
-
 # Load RAW data (Only need to run after new raw data input: Takes about 30 mins)
-```{r data load, warning= FALSE}
-
+```{r data, warning=FALSE}
 # ---- DATA 2017-2022 ----
 ## Load
 ### 2017-2018
@@ -745,7 +726,7 @@ rm(fish, fish.2017_2022, fish.2018, fish.2019, fish.2020, fish.2021, fishRAW.201
 ```
 
 # Filtering RAW output to relevant information (adjust based on research interest)
-```{r}
+```{r filter}
 # Load data sets
 fish <- read_parquet("Fish_All years.parquet")
 
@@ -803,11 +784,11 @@ aggregate(Radius ~ YearGroup, data = fish_unique,
 ```
 
 # Load in data (once the above chunk is set to your taste, you only have to run this chunk when starting up again)
-```{r}
+```{r reload}
 fish <- read_parquet("Fish_Clean.parquet")
 ```
 # Abundance
-```{r}
+```{r abundance-dataprep}
 # ---- DATA PREP ----
 # Remove rows with non-herbivorous fish, and non-instantaneous observations
 Abundance <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
@@ -836,7 +817,7 @@ Abundance <- Abundance %>%
 rm(survey_meta, all_combos)
 ```
 ## Pre-model plots
-```{r}
+```{r abundance-premod}
 # Add the different guilds together per survey
 Abundance_combined <- Abundance %>%
   group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
@@ -916,7 +897,7 @@ rm(sum_lm)
 
 ```
 ## Statistical models
-```{r}
+```{r abundance-mod}
 # Version 1: Log-link to test Reef.dist and AR dist significance among AR
 AmodelNB1 <- glmmTMB(GuildAbundance_m2 ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Abundance, family = tweedie(link="log"))
 
@@ -940,7 +921,7 @@ Asim_resNB7 <- simulateResiduals(fittedModel = AmodelNB7, re.form = NULL)
 plot(Asim_resNB7)
 ```
 ## Plots and post-hoc
-```{r}
+```{r abundance-plot}
 vc <- as.data.frame(VarCorr(AmodelNB7)$cond) # Variance random intercepts
 sigma_re <- sqrt(sum(unlist(vc))) # Emmeans expects standard deviation
 
@@ -971,34 +952,34 @@ n_values <- Abundance %>%
 print(n_values)
 
 # Plot 2: Yeargroup x DietH interaction
-Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
+Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response*100, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL),
+  geom_text(aes(label = .group, y = asymp.UCL*100),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
             size = 5,
             show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = expression(Abundance ~ (m^-2)),
+  labs(x = "Herbivore guild", y = expression(Abundance ~ (m^-2) %*% 100),
        title = "Herbivore fish abundance over time, by guild") +
   guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_minimal(base_size = 12) +
   theme_bw()
 
 # Plot 3: Yeargroup x Patch.type interaction
-Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
+Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response*100, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
+  geom_errorbar(aes(ymin = asymp.LCL*100L, ymax = asymp.UCL*100),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL),
+  geom_text(aes(label = .group, y = asymp.UCL*100),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
             size = 4.5,
             show.legend = FALSE) +
-  labs(x = "Reef design", y = expression(Abundance ~ (m^-2)),
+  labs(x = "Reef design", y = expression(Abundance ~ (m^-2) %*% 100),
        title = "Herbivore fish abundance over time, by reef design") +
   guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_minimal(base_size = 12) +
@@ -1050,7 +1031,7 @@ print(Aplot2)
 print(Aplot3)
 ```
 # Mean size
-```{r}
+```{r meansize-dataprep}
 # ---- DATA PREP ----
 # Remove rows with no abundance (as those would lower mean sizes), or non-herbivorous fish and non-instantaneous observations
 Meansize <- fish[fish$Abundance != 0 & fish$DietH != "Other" & fish$Coloured == 12,]
@@ -1074,7 +1055,7 @@ Meansize <- Meansize %>%
 rm(survey_meta)
 ```
 ## Pre-model plots
-```{r}
+```{r meansize-premod}
 # Add the different guilds together per survey
 Meansize_combined <- Meansize %>%
   group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
@@ -1146,7 +1127,7 @@ text(x = 25,
      pos = 4)
 ```
 ## Statistical models
-```{r}
+```{r meansize-mod}
 # Version 5: Log-link, checking for significance of covariates. Couldn't use Reef.dist_m and AR_dist.m here due to convergence issues. Therefore, tested with proxies.
 MSmodelLoglink3 <- glmmTMB(GuildMeansize ~ Depth.MLLW + Reefdistance + ARdistance + YearGroup * Patch.type + DietH + (1 | Transect) + (1| TransectDate:Observer), data = Meansize, family = tweedie(link="log"))
 
@@ -1172,7 +1153,7 @@ plot(MSsim_resLoglink6)
 ```
 
 ## Plots and post-hoc
-```{r}
+```{r meansize-plot}
 vc <- as.data.frame(VarCorr(MSmodelLoglink6)$cond) # Variance random intercepts
 sigma_re <- sqrt(sum(unlist(vc))) # Emmeans expects standard deviation
 
@@ -1274,7 +1255,7 @@ print(MSplot2)
 print(MSplot3)
 ```
 ## Three-way
-```{r}
+```{r meansize-threeway}
 vc <- as.data.frame(VarCorr(MSmodelLoglink5)$cond) # Variance random intercepts
 sigma_re <- sqrt(sum(unlist(vc))) # Emmeans expects standard deviation
 
@@ -1348,7 +1329,7 @@ summary(Y_contrasts, infer = TRUE)
 print(MSplot5)
 ```
 # Biomass
-```{r}
+```{r biomass-dataprep}
 # ---- DATA PREP ----
 # Remove rows with no abundance or non-herbivorous fish
 Biomass <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
@@ -1375,7 +1356,7 @@ Biomass <- Biomass %>%
 rm(survey_meta, all_combos)
 ```
 ## Pre-model plots
-```{r}
+```{r biomass-premod}
 # Add the different guilds together per survey
 Biomass_combined <- Biomass %>%
   group_by(SurveyNo, Depth.MLLW, Treatment, Patch.type, YearGroup, Reef.dist_m, AR.dist_m) %>%
@@ -1462,7 +1443,7 @@ rm(sum_lm)
 ```
 
 ## Statistical models
-```{r}
+```{r biomass-mod}
 # Version 3: log-link, first testing if Reef and AR distance without reference/control patches is significant
 BmodelLoglink1 <- glmmTMB(GuildBiomass ~ Depth.MLLW + Reef.dist_m + AR.dist_m + YearGroup * Patch.type + DietH + (1 | Transect) + (1 | TransectDate:Observer), data = Biomass, family = tweedie(link="log"))
 
@@ -1493,7 +1474,7 @@ plot(Bsim_resLoglink6)
 plot(Bsim_resLoglink7)
 ```
 ## Plots and post-hoc
-```{r}
+```{r biomass-plot}
 vc <- as.data.frame(VarCorr(BmodelLoglink7)$cond) # Variance random intercepts
 sigma_re <- sqrt(sum(unlist(vc))) # Emmeans expects standard deviation
 
@@ -1589,7 +1570,7 @@ print(Bplot2)
 print(Bplot3)
 ```
 # Species richness
-```{r}
+```{r richness-dataprep}
 # ---- DATA PREP ----
 # Remove rows with non-herbivorous fish, and drop the "Other" level
 Richness <- fish[fish$DietH != "Other",]
@@ -1619,7 +1600,7 @@ rm(survey_meta, all_combos)
 
 ```
 ## Pre-model plots
-```{r}
+```{r richness-premod}
 # Add the different guilds together per survey
 Richness_combined <- Richness %>%
   group_by(SurveyNo, Depth.MLLW, Treatment, Reef.dist_m, AR.dist_m) %>%
@@ -1696,7 +1677,7 @@ rm(sum_lm)
 
 ```
 ## Statistical models
-```{r richness}
+```{r richness-mod}
 # Version 5: Conway-Maxwell Poisson, with distances including NA values (to test significance of distance effects)
 RmodelCMP3 <- glmmTMB(GuildRichness ~ Depth.MLLW + YearGroup * Patch.type + Reef.dist_m +  AR.dist_m + DietH + (1 | Transect) + (1 | TransectDate:Observer), data=Richness, family=compois())
 
@@ -1734,7 +1715,7 @@ testCategorical(Rsim_resCMP5, catPred = Richness$DietH)
 ```
 
 ## Plots & post-hoc
-```{r}
+```{r richness-plot}
 # 2. YearGroup:DietH interaction
 emm_diet <- emmeans(RmodelCMP7, ~ YearGroup * DietH, type = "response")
 cld_diet <- cld(emm_diet, by = "DietH", Letters = letters)
@@ -1756,7 +1737,7 @@ Rplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, colour = YearGroup, s
   geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 5,
             show.legend = FALSE) +
   labs(x = "Herbivore guild", y = "Species richness (S)") +
   guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
@@ -1772,7 +1753,7 @@ Rplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, colour = YearGr
   geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
-            size = 3,
+            size = 5,
             show.legend = FALSE) +
   labs(x = "Reef design", y = "Species richness (S)") +
   guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
@@ -1817,7 +1798,7 @@ print(Rplot2)
 print(Rplot3)
 ```
 # Ordination plots (With YearGroups combined)
-```{r}
+```{r ord-dataprep}
 # ---- DATA PREP, similar to Biomass ----
 # Remove rows with non-herbivorous fish, and non-instantaneous observations
 BiomassNMDS <- fish[fish$DietH != "Other" & fish$Coloured == 12,]
@@ -1885,7 +1866,7 @@ BiomassNMDS_exclOUT <- BiomassNMDS[-c(147), ]
 BiomassNMDS_data_exclOUT <- BiomassNMDS_data[-c(147), ]
 ```
 ## Statistical models
-```{r}
+```{r ord-mod}
 # PERMANOVA
 # Bray-Curtis distance
 bray_dist <- vegdist(BiomassNMDS_data, method = "bray")
@@ -2005,7 +1986,7 @@ vectors_segments_sig <- subset(vectors_segments, pval < 0.05)
 ```
 
 ## Outlier plots for appendix
-``` {r}
+``` {r ord-plotoutlier}
 ## Reef design
 site.scores$highlight <- ifelse(site.scores$SampleID %in% c("175","170"), ## 
                                  as.character(site.scores$Patch.type), "Other")
@@ -2052,7 +2033,7 @@ print(outlierDesign)
 #print(outlierYear)
 ```
 ## Patch.type without dots
-```{r}
+```{r ordplot-patchtype}
 # Start from full data and null out the outliers only for ellipse grouping
 data_ell <- site.scores
 data_ell$Patch.type[data_ell$SampleID %in% c("175","170")] <- NA  # mask them, don't drop
@@ -2156,7 +2137,7 @@ main_plot <- ggplot() +
 main_plot
 ```
 ## YearGroup without dots
-```{r}
+```{r ordplot-year}
 data_ell <- site.scores
 data_ell$YearGroup[data_ell$SampleID %in% c("175","170")] <- NA
 
@@ -2256,7 +2237,7 @@ for(p in plots){
   
   # Save PNG
   ggsave(
-    filename = file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/Noncombined_png", paste0(p, ".png")),
+    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/Noncombined_png", paste0(p, ".png")),
     plot     = plot_obj,
     width    = 7,
     height   = 5,
@@ -2267,7 +2248,7 @@ for(p in plots){
 # Saving MSplot5
 ## Save PNG
 ggsave(
-    filename = file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", paste0("MSplot5.png")),
+    filename = file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", paste0("MSplot5.png")),
     plot     = MSplot5,
     width    = 7,
     height   = 12,
@@ -2275,7 +2256,7 @@ ggsave(
   )
 
 ## Tiff
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "MSplot5.tiff"),
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "MSplot5.tiff"),
       plot     = MSplot5,
       width    = 16,
       height   = 20,
@@ -2285,37 +2266,37 @@ ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/The
 
 # Saving nMDSplots (cowplot object) to same folders
 ## PNG
-png(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot1.png"),
+png(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot1.png"),
     width = 7, height = 5, units = "in", res = 600)
 print(main_plot)
 dev.off()
 
 ## Tiff
-tiff(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "nMDSplot1.tiff"),
+tiff(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "nMDSplot1.tiff"),
      width = 8, height = 6, units = "in", res = 600, compression = "lzw")
 print(main_plot)
 dev.off()
 
 ## PNG
-png(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot2.png"),
+png(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot2.png"),
     width = 7, height = 5, units = "in", res = 600)
 print(main_plot2)
 dev.off()
 
 ## Tiff
-tiff(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "nMDSplot2.tiff"),
+tiff(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "nMDSplot2.tiff"),
      width = 8, height = 6, units = "in", res = 600, compression = "lzw")
 print(main_plot2)
 dev.off()
 
 ## PNG
-png(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "outlierplot.png"),
+png(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "outlierplot.png"),
     width = 7, height = 5, units = "in", res = 600)
 print(outlierDesign)
 dev.off()
 
 ## Tiff
-tiff(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "outlierplot.tiff"),
+tiff(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "outlierplot.tiff"),
      width = 8, height = 6, units = "in", res = 600, compression = "lzw")
 print(outlierDesign)
 dev.off()
@@ -2452,9 +2433,9 @@ NMDS_plots <- plot_grid(row1, row2,
 print(NMDS_plots)
 
 # Save them
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_guild.png"), 
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_guild.png"), 
        AMSB2, width = 16, height = 20, units = "cm", dpi = 600)
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_guild.tiff"),
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_guild.tiff"),
        AMSB2, 
        width = 16, 
        height = 20, 
@@ -2462,9 +2443,9 @@ ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/The
        dpi = 600,
        compression = "lzw")
 
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_patch.png"), 
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_patch.png"), 
        AMSB3, width = 16, height = 20, units = "cm", dpi = 600)
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_patch.tiff"),
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_patch.tiff"),
        AMSB3, 
        width = 16, 
        height = 20, 
@@ -2472,9 +2453,9 @@ ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/The
        dpi = 600,
        compression = "lzw")
 
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_richness.png"), 
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_richness.png"), 
        Rcomb, width = 16, height = 10, units = "cm", dpi = 600)
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_richness.tiff"),
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_richness.tiff"),
        Rcomb, 
        width = 16, 
        height = 20, 
@@ -2482,7 +2463,7 @@ ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/The
        dpi = 600,
        compression = "lzw")
 
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_NMDS.tiff"),
+ggsave(file.path("C:/Users/Jorn de Gelder/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_NMDS.tiff"),
        NMDS_plots, 
        width = 16, 
        height = 20, 
@@ -2492,7 +2473,7 @@ ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/The
 ```
 
 # Survey and species tables
-``` {r}
+``` {r tables}
 ## Survey table
 surveylist <- fish %>% distinct(fish$SurveyNo, .keep_all = TRUE)
 surveylist <- surveylist[c("SurveyNo", "Observer","Date", "YearGroup", "Transect")]
