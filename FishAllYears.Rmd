@@ -1,7 +1,7 @@
 =======
 title: Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size
 author: Jorn de Gelder
-date: 18/2/2026
+date: 19/2/2026
 ---
 
 # if on MSI laptop (Jorn)
@@ -971,36 +971,36 @@ n_values <- Abundance %>%
 print(n_values)
 
 # Plot 2: Yeargroup x DietH interaction
-Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response*100, shape = YearGroup, group = YearGroup)) +
+Aplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL*100),
+  geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
             size = 5,
             show.legend = FALSE) +
-  labs(x = "Herbivore guild", y = expression(Abundance ~ (m^-2 ~ x ~ 100)),
+  labs(x = "Herbivore guild", y = expression(Abundance ~ (m^-2)),
        title = "Herbivore fish abundance over time, by guild") +
-  guides(shape = guide_legend(title = "Year")) +
+  guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_minimal(base_size = 12) +
   theme_bw()
 
 # Plot 3: Yeargroup x Patch.type interaction
-Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response*100, shape = YearGroup, group = YearGroup)) +
+Aplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = asymp.LCL*100, ymax = asymp.UCL*100),
+  geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
                 width = 0.2) +
-  geom_text(aes(label = .group, y = asymp.UCL*100),
+  geom_text(aes(label = .group, y = asymp.UCL),
             position = position_dodge(width = 0.5),
             vjust = -0.5,
             size = 4.5,
             show.legend = FALSE) +
-  labs(x = "Reef design", y = expression(Abundance ~ (m^-2 ~ x ~ 100)),
+  labs(x = "Reef design", y = expression(Abundance ~ (m^-2)),
        title = "Herbivore fish abundance over time, by reef design") +
-  guides(shape = guide_legend(title = "Year")) +
+  guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_minimal(base_size = 12) +
   theme_bw()
 
@@ -1210,7 +1210,7 @@ n_values <- Meansize %>%
 print(n_values)
 
 # Plot 2: DietH x Year interaction
-MSplot2 <- ggplot(emm2_df, aes(x = DietH, y = response, shape = YearGroup, group = YearGroup)) +
+MSplot2 <- ggplot(emm2_df, aes(x = DietH, y = response, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
@@ -1224,7 +1224,7 @@ MSplot2 <- ggplot(emm2_df, aes(x = DietH, y = response, shape = YearGroup, group
   labs(x = "Herbivore guild", y = "Mean size (cm)",
        title = "Mean herbivore fish size over time, by guild",
       subtitle = "Averaged over reef design (Year × Guild × Reef design interaction significant)") +
-  guides(shape = guide_legend(title = "Year")) +
+  guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
@@ -1319,7 +1319,8 @@ for (patch in unique(emm5_df$Patch.type)) {
 }
 emm5_df <- do.call(rbind, cld_list5)
 
-MSplot5 <- ggplot(emm5_df, aes(x = DietH, y = response, 
+MSplot5 <- ggplot(emm5_df, aes(x = DietH, y = response,
+                               colour = factor(YearGroup),
                              shape = factor(YearGroup), 
                              group = factor(YearGroup))) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL), 
@@ -1331,7 +1332,7 @@ MSplot5 <- ggplot(emm5_df, aes(x = DietH, y = response,
   facet_wrap(~ Patch.type, ncol = 1, scales = "free_y") +
   scale_y_continuous(limits = c(0, NA), expand = expansion(add = c(0, 10))) +
   labs(x = "Herbivore guild", y = "Mean size (cm)") +
-  guides(shape = guide_legend(title = "Year")) +
+  guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_bw() +
   theme(strip.text = element_text(face = "plain"),
         strip.background = element_blank(),
@@ -1517,7 +1518,7 @@ emm_patch_df <- as.data.frame(cld_patch)
 emm_patch_df$.group <- trimws(emm_patch_df$.group)
 
 # Plot 2: Yeargroup x DietH interaction
-Bplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, shape = YearGroup, group = YearGroup)) +
+Bplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
@@ -1530,7 +1531,7 @@ Bplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, shape = YearGroup, gr
   scale_y_continuous(expand = expansion(mult = 0.1)) +
   labs(x = "Herbivore guild", y = expression(Biomass ~ (kg ~ ha^-1)),
        title = "Mean herbivore biomass over time, by guild") +
-  guides(shape = guide_legend(title = "Year")) +
+  guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_minimal(base_size = 12) +
   theme_bw()
 
@@ -1747,7 +1748,7 @@ emm_patch_df <- as.data.frame(cld_patch)
 emm_patch_df$.group <- trimws(emm_patch_df$.group)
 
 # Plot 2: Yeargroup x DietH interaction
-Rplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, shape = YearGroup, group = YearGroup)) +
+Rplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
@@ -1758,12 +1759,12 @@ Rplot2 <- ggplot(emm_diet_df, aes(x = DietH, y = response, shape = YearGroup, gr
             size = 3,
             show.legend = FALSE) +
   labs(x = "Herbivore guild", y = "Species richness (S)") +
-  guides(shape = guide_legend(title = "Year")) +
+  guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_minimal(base_size = 12) +
   theme_bw()
 
 # Plot 3: Yeargroup x patch.type interaction
-Rplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, shape = YearGroup, group = YearGroup)) +
+Rplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, colour = YearGroup, shape = YearGroup, group = YearGroup)) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
   geom_errorbar(aes(ymin = asymp.LCL, ymax = asymp.UCL),
                 position = position_dodge(width = 0.5),
@@ -1774,7 +1775,7 @@ Rplot3 <- ggplot(emm_patch_df, aes(x = Patch.type, y = response, shape = YearGro
             size = 3,
             show.legend = FALSE) +
   labs(x = "Reef design", y = "Species richness (S)") +
-  guides(shape = guide_legend(title = "Year")) +
+  guides(shape = guide_legend(title = "Year"), colour = guide_legend(title = "Year")) +
   theme_minimal(base_size = 12) +
   theme_bw()
 
@@ -1971,10 +1972,10 @@ top10_species <- species_scores_biomass %>%
   slice_head(n = 10)
 
 # Rescale font/point size by biomass within the top 10
-top10_species$font_size <- scales::rescale(top10_species$Biomass, to = c(3, 4))
+top10_species$font_size <- scales::rescale(top10_species$Biomass, to = c(3, 5))
 
-top10_species$NMDS1[top10_species$Species == "Hipposcarus harid"] <- 0.15
-top10_species$NMDS2[top10_species$Species == "Hipposcarus harid"] <- 0.06
+top10_species$NMDS1[top10_species$Species == "Hipposcarus harid"] <- 0.26
+top10_species$NMDS2[top10_species$Species == "Hipposcarus harid"] <- 0.11
 top10_species$Species[top10_species$Species == "Hipposcarus harid"] <- 
   "Hipposcarus harid (outlier)"
 
@@ -2003,253 +2004,58 @@ vectors_segments_sig <- subset(vectors_segments, pval < 0.05)
 
 ```
 
-## Plots with outlier
+## Outlier plots for appendix
 ``` {r}
-# ggplot(site.scores,aes(x = NMDS1, y = NMDS2)) +
-#   geom_point(size = 3, aes(colour = Patch.type)) +
-#   geom_text(
-#     data = subset(site.scores, SampleID %in% c("193","175","170","144", "163", "88")),
-#     aes(label = SampleID),
-#     hjust = -0.2, fontface = "bold", size = 4
-#   ) +
-#   geom_segment(
-#     data = vectors_segments_sig,
-#     aes(x = x, y = y, xend = xend, yend = yend),
-#     arrow = arrow(length = unit(0.25, "cm")),
-#     colour = "red",
-#     inherit.aes = FALSE
-#   ) +
-#   geom_text(
-#     data = vectors_segments_sig,
-#     aes(x = xend, y = yend, label = Guild),
-#     colour = "red",
-#     hjust = 0.5,
-#     vjust = -0.5,
-#     inherit.aes = FALSE
-#   ) +
+## Reef design
+site.scores$highlight <- ifelse(site.scores$SampleID %in% c("175","170"), ## 
+                                 as.character(site.scores$Patch.type), "Other")
+
+outlierDesign <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(size = 3, aes(colour = highlight, shape = highlight)) +
+  geom_text(
+    data = subset(site.scores, highlight != "Other"),
+    aes(label = YearGroup),
+    hjust = -0.3, size = 3.5, fontface = "bold"
+  ) +
+  theme(axis.text = element_text(size = 12, colour = "black"),
+    axis.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14),
+    panel.background = element_blank(),
+    panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2)) +
+  labs(x = "NMDS1", y = "NMDS2", colour = "Reef design", shape = "Reef design") +
+  scale_colour_manual(values = c("BRU" = "#E69F00", "CAGE" = "#CC79A7", "COMP" = "#009E73", 
+                                 "COMP" = "#F0E442", "Control" = "#0072B2", 
+                                 "Reference" = "#000000", "Other" = "grey70")) +
+  scale_shape_manual(values = c("BRU" = 16, "CAGE" = 17, "COMP" = 15, 
+                                "Control" = 18, "Reference" = 8, "Other" = 19))
+
+# ## YearGroup
+# site.scores$highlight <- ifelse(site.scores$SampleID %in% c("175","170"),
+#                                  as.character(site.scores$YearGroup), "Other")
+# outlierYear <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2)) +
+#   geom_point(size = 3, aes(colour = highlight)) +
 #   theme(axis.text = element_text(size = 12, colour = "black"),
 #     axis.title = element_text(size = 14),
 #     legend.text = element_text(size = 12),
 #     legend.title = element_text(size = 14),
 #     panel.background = element_blank(),
 #     panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2)) +
-#   labs(x = "NMDS1", y = "NMDS2", colour = "Reef design") +
-#   scale_colour_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733")) +
-#   scale_fill_manual(values = c("#B0E54D", "#6FDCD9", "#F0C862", "#EC86BF","#D04E08", "#0673B0", "#FF5733"))
+#   labs(x = "NMDS1", y = "NMDS2", colour = "Year") +
+#   scale_colour_manual(values = c(
+#                       "2021–2022" = "#56B4E9",
+#                       "2023–2024" = "#009E73",
+#                       "2025"      = "#FF5733", 
+#                       "Other" = "grey70"))
+
+print(outlierDesign)
+#print(outlierYear)
 ```
-## Inset plot for Patch.type 
-```{r}
-# # Start from full data and null out the outliers only for ellipse grouping
-# data_ell <- site.scores
-# data_ell$Patch.type[data_ell$SampleID %in% c("144", "163","193","175","170","88")] <- NA  # mask them, don't drop
-# 
-# # Now run ordiellipse with a full-length grouping vector
-# ell <- ordiellipse(
-#   nmds,
-#   groups = data_ell$Patch.type,
-#   kind = "se",
-#   conf = 0.99,
-#   draw = "none"
-# )
-# 
-# vectorfactor <- 0.3
-# 
-# ellipse_df <- do.call(rbind, lapply(names(ell), function(g) {
-#   df <- as.data.frame(
-#     vegan:::veganCovEllipse(ell[[g]]$cov, ell[[g]]$center, sqrt(qchisq(0.99, df = 2)))
-#   )
-#   colnames(df) <- c("NMDS1", "NMDS2")
-#   df$Patch.type <- g
-#   df
-# }))
-# 
-# # Wong palette (7 values for 7 patch types if needed, 6 used here)
-# wong_colors <- c(BRU = "#E69F00", CAGE = "#CC79A7", CAKE = "#009E73",
-#                  COMP = "#F0E442", Control = "#0072B2", Reference = "#000000")
-# 
-# # Shape mapping
-# patch_shapes <- c(BRU = 16, CAGE = 17, CAKE = 15, COMP = 18, Control = 8, Reference = 3)
-# 
-# main_plot <- ggplot(subset(site.scores, !(SampleID %in% c("193","175","170","144","163","88"))),
-#         aes(x = NMDS1, y = NMDS2)) +
-#   geom_polygon(
-#     data = ellipse_df,
-#     aes(x = NMDS1, y = NMDS2, fill = Patch.type),
-#     alpha = 0.40,
-#     colour = NA
-#   ) +
-#   geom_point(size = 3, aes(colour = Patch.type, shape = Patch.type)) +
-#   geom_segment(
-#     data = vectors_segments_sig,
-#     aes(x = x, y = y, xend = xend * vectorfactor, yend = yend * vectorfactor),
-#     arrow = arrow(length = unit(0.25, "cm")),
-#     colour = "red",
-#     inherit.aes = FALSE
-#   ) +
-#   geom_text(
-#     data = vectors_segments_sig,
-#     aes(x = xend * vectorfactor * 1.3, y = yend * vectorfactor * 1.3, label = Guild),
-#     colour = "red",
-#     hjust = 0.5,
-#     vjust = -0.5,
-#     inherit.aes = FALSE
-#   ) +
-#   scale_colour_manual(values = wong_colors, name = "Reef design") +
-#   scale_fill_manual(values = wong_colors, name = "Reef design") +
-#   scale_shape_manual(values = patch_shapes, name = "Reef design") +
-#   # geom_text(
-#   #   data = top10_species,
-#   #   aes(x = NMDS1, y = NMDS2, label = Species, size = font_size),
-#   #   colour = "black",
-#   #   fontface = "plain",
-#   #   inherit.aes = FALSE,
-#   #   show.legend = FALSE
-#   # ) +
-#   # scale_size_identity() +
-#   theme(
-#     axis.text = element_text(size = 12, colour = "black"),
-#     axis.title = element_text(size = 14),
-#     legend.text = element_text(size = 10),
-#     legend.title = element_text(size = 12),
-#     panel.background = element_blank(),
-#     panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2)
-#   ) +
-#   labs(x = "NMDS1", y = "NMDS2") +
-#   guides(
-#     colour = guide_legend(override.aes = list(size = 3)),
-#     shape = guide_legend()
-#   )
-# 
-# # Inset
-# site.scores$InsetColor <- ifelse(site.scores$SampleID %in% c("193","175","170","144","163","88"),
-#                                  as.character(site.scores$Patch.type), "Other")
-# 
-# inset_colors <- c("Other" = "lightgrey", wong_colors)
-# inset_shapes <- c("Other" = 1, patch_shapes)
-# 
-# inset_plot <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2)) +
-#   geom_point(size = 2, aes(colour = InsetColor, shape = InsetColor)) +
-#   scale_colour_manual(values = inset_colors) +
-#   scale_shape_manual(values = inset_shapes) +
-#   theme_minimal() +
-#   theme(
-#     legend.position = "none",
-#     axis.title = element_blank(),
-#     panel.grid = element_blank(),
-#     panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8)
-#   )
-# 
-# final_plot <- ggdraw() +
-#   draw_plot(main_plot) +
-#   draw_plot(inset_plot, x = 0.55, y = 0.67, width = 0.20, height = 0.30)
-# 
-# final_plot
-```
-## Inset plot for YearGroup
-```{r}
-# # Start from full data and null out the outliers only for ellipse grouping
-# data_ell <- site.scores
-# data_ell$YearGroup[data_ell$SampleID %in% c("193","175","170","144", "163", "88")] <- NA  # mask them, don't drop
-# 
-# # Now run ordiellipse with a full-length grouping vector
-# ell <- ordiellipse(
-#   nmds,
-#   groups = data_ell$YearGroup,
-#   kind = "se",
-#   conf = 0.99,
-#   draw = "none"
-# )
-# 
-# vectorfactor <- 0.3
-# 
-# ellipse_df <- do.call(rbind, lapply(names(ell), function(g) {
-#   df <- as.data.frame(
-#     vegan:::veganCovEllipse(ell[[g]]$cov, ell[[g]]$center, sqrt(qchisq(0.99, df = 2)))
-#   )
-#   colnames(df) <- c("NMDS1", "NMDS2")
-#   df$YearGroup <- g
-#   df
-# }))
-# 
-# # Wong colours least used in the Patch.type plot
-# wong_colors_year <- c("2021–2022" = "#56B4E9",   # sky blue
-#                       "2023–2024" = "#009E73",   # green
-#                       "2025"      = "#000000")   # black
-# 
-# # Shape mapping for three year groups
-# year_shapes <- c("2021–2022" = 16, "2023–2024" = 17, "2025" = 15)
-# 
-# main_plot2 <- ggplot(subset(site.scores, !(SampleID %in% c("193","175","170","144","163","88"))),
-#         aes(x = NMDS1, y = NMDS2)) +
-#   geom_polygon(
-#     data = ellipse_df,
-#     aes(x = NMDS1, y = NMDS2, fill = YearGroup),
-#     alpha = 0.40,
-#     colour = NA
-#   ) +
-#   geom_point(size = 3, aes(colour = YearGroup, shape = YearGroup)) +
-#   geom_segment(
-#     data = vectors_segments_sig,
-#     aes(x = x, y = y, xend = xend * vectorfactor, yend = yend * vectorfactor),
-#     arrow = arrow(length = unit(0.25, "cm")),
-#     colour = "red",
-#     inherit.aes = FALSE
-#   ) +
-#   geom_text(
-#     data = vectors_segments_sig,
-#     aes(x = xend * vectorfactor * 1.3, y = yend * vectorfactor * 1.3, label = Guild),
-#     colour = "red",
-#     hjust = 0.5,
-#     vjust = -0.5,
-#     inherit.aes = FALSE
-#   ) +
-#   scale_colour_manual(values = wong_colors_year, name = "Year") +
-#   scale_fill_manual(values = wong_colors_year, name = "Year") +
-#   scale_shape_manual(values = year_shapes, name = "Year") +
-#   theme(
-#     axis.text = element_text(size = 12, colour = "black"),
-#     axis.title = element_text(size = 14),
-#     legend.text = element_text(size = 10),
-#     legend.title = element_text(size = 12),
-#     panel.background = element_blank(),
-#     panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2)
-#   ) +
-#   labs(x = "NMDS1", y = "NMDS2") +
-#   guides(
-#     colour = guide_legend(override.aes = list(size = 3)),
-#     shape = guide_legend()
-#   )
-# 
-# # Inset
-# site.scores$InsetColor <- ifelse(site.scores$SampleID %in% c("193","175","170","144","163","88"),
-#                                  as.character(site.scores$YearGroup), "Other")
-# 
-# inset_colors2 <- c("Other" = "lightgrey", wong_colors_year)
-# inset_shapes2 <- c("Other" = 1, year_shapes)
-# 
-# inset_plot2 <- ggplot(site.scores, aes(x = NMDS1, y = NMDS2)) +
-#   geom_point(size = 2, aes(colour = InsetColor, shape = InsetColor)) +
-#   scale_colour_manual(values = inset_colors2) +
-#   scale_shape_manual(values = inset_shapes2) +
-#   theme_minimal() +
-#   theme(
-#     legend.position = "none",
-#     axis.title = element_blank(),
-#     panel.grid = element_blank(),
-#     panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8)
-#   )
-# 
-# final_plot2 <- ggdraw() +
-#   draw_plot(main_plot2) +
-#   draw_plot(inset_plot2, x = 0.54, y = 0.67, width = 0.20, height = 0.30)
-# 
-# final_plot2
-```
-## Inset plot for Patch.type without dots
+## Patch.type without dots
 ```{r}
 # Start from full data and null out the outliers only for ellipse grouping
 data_ell <- site.scores
-data_ell$Patch.type[data_ell$SampleID %in% c("193","175","170","144", "163", "88")] <- NA  # mask them, don't drop
+data_ell$Patch.type[data_ell$SampleID %in% c("175","170")] <- NA  # mask them, don't drop
 
 vectorfactor <- 0.3
 
@@ -2275,10 +2081,18 @@ wong_colors <- c(BRU = "#E69F00", CAGE = "#CC79A7", CAKE = "#009E73",
                  COMP = "#F0E442", Control = "#0072B2", Reference = "#000000")
 
 main_plot <- ggplot() +
-  geom_polygon(
+  geom_polygon_pattern(
     data = ellipse_df,
-    aes(x = NMDS1, y = NMDS2, fill = Patch.type, colour = Patch.type),
-    alpha = 0.40
+    aes(x = NMDS1, y = NMDS2, 
+        fill = Patch.type, 
+        colour = Patch.type,
+        pattern = Patch.type,
+        pattern_angle = Patch.type,
+        pattern_spacing = Patch.type),
+    alpha = 0.40,
+    pattern_density = 0.3,
+    pattern_fill = "white",
+    pattern_colour = "grey30"
   ) +
   geom_segment(
     data = vectors_segments_sig,
@@ -2300,17 +2114,34 @@ main_plot <- ggplot() +
     aes(x = NMDS1, y = NMDS2, label = Species),
     colour = "black",
     fontface = "plain",
-    size = top10_species$font_size,            # adjust to match your font_size values
+    size = top10_species$font_size,
     inherit.aes = FALSE,
     show.legend = FALSE,
-    max.overlaps = Inf,  # ensure all labels are always drawn
-    box.padding = 0.4,   # space between label and its bounding box
-    point.padding = NA,  # no padding around anchor point (no visible points here)
-    segment.colour = "grey50",  # colour of leader lines
-    segment.size = 0.3          # thickness of leader lines
+    max.overlaps = Inf,
+    box.padding = 0.4,
+    point.padding = NA,
+    segment.colour = "grey50",
+    segment.size = 0.3,
+    bg.colour = "white",    
+    bg.r = 0.15               
   ) +
   scale_colour_manual(values = wong_colors, name = "Reef design") +
   scale_fill_manual(values = wong_colors, name = "Reef design") +
+  scale_pattern_manual(
+    name = "Reef design",
+    values = c(BRU = "stripe", CAGE = "stripe", CAKE = "stripe",
+               COMP = "stripe", Control = "circle", Reference = "none")
+  ) +
+  scale_pattern_angle_manual(
+    name = "Reef design",
+    values = c(BRU = 45, CAGE = 90, CAKE = 135,
+               COMP = 0, Control = 0, Reference = 0)
+  ) +
+  scale_pattern_spacing_manual(
+    name = "Reef design",
+    values = c(BRU = 0.02, CAGE = 0.02, CAKE = 0.03,
+               COMP = 0.03, Control = 0.03, Reference = 0.05)
+  ) +
   scale_size_identity() +
   theme(
     axis.text = element_text(size = 12, colour = "black"),
@@ -2324,10 +2155,10 @@ main_plot <- ggplot() +
 
 main_plot
 ```
-## Inset plot for YearGroup without dots
+## YearGroup without dots
 ```{r}
 data_ell <- site.scores
-data_ell$YearGroup[data_ell$SampleID %in% c("193","175","170","144", "163", "88")] <- NA
+data_ell$YearGroup[data_ell$SampleID %in% c("175","170")] <- NA
 
 ell <- ordiellipse(
   nmds,
@@ -2353,26 +2184,20 @@ wong_colors_year <- c("2021–2022" = "#56B4E9",
                       "2025"      = "#000000")
 
 main_plot2 <- ggplot() +
-  geom_polygon(
+  geom_polygon_pattern(
     data = ellipse_df,
-    aes(x = NMDS1, y = NMDS2, fill = YearGroup, colour = YearGroup),
-    alpha = 0.40
+    aes(x = NMDS1, y = NMDS2, 
+        fill = YearGroup, 
+        colour = YearGroup,
+        pattern = YearGroup,
+        pattern_angle = YearGroup,
+        pattern_spacing = YearGroup),
+    alpha = 0.40,
+    pattern_density = 0.15,
+    pattern_fill = "white",
+    pattern_colour = "grey30",
+    pattern_alpha = 0.6
   ) +
-  # geom_segment(
-  #   data = vectors_segments_sig,
-  #   aes(x = x, y = y, xend = xend * vectorfactor, yend = yend * vectorfactor),
-  #   arrow = arrow(length = unit(0.25, "cm")),
-  #   colour = "red",
-  #   inherit.aes = FALSE
-  # ) +
-  # geom_text(
-  #   data = vectors_segments_sig,
-  #   aes(x = xend * vectorfactor * 1.3, y = yend * vectorfactor * 1.3, label = Guild),
-  #   colour = "red",
-  #   hjust = 0.5,
-  #   vjust = -0.5,
-  #   inherit.aes = FALSE
-  # ) +
   geom_text_repel(
     data = top10_species,
     aes(x = NMDS1, y = NMDS2, label = Species),
@@ -2385,10 +2210,25 @@ main_plot2 <- ggplot() +
     box.padding = 0.4,
     point.padding = NA,
     segment.colour = "grey50",
-    segment.size = 0.3
+    segment.size = 0.3,
+    bg.colour = "white",
+    bg.r = 0.15
   ) +
   scale_colour_manual(values = wong_colors_year, name = "Year") +
   scale_fill_manual(values = wong_colors_year, name = "Year") +
+  scale_pattern_manual(
+    name = "Year",
+    values = c("2021–2022" = "none", "2023–2024" = "stripe", "2025" = "stripe")
+  ) +
+  scale_pattern_angle_manual(
+    name = "Year",
+    values = c("2021–2022" = 0, "2023–2024" = 135, "2025" = 45)
+  ) +
+  scale_pattern_spacing_manual(
+    name = "Year",
+    values = c("2021–2022" = 0.02, "2023–2024" = 0.02, "2025" = 0.02)
+  ) +
+  guides(pattern_spacing = "none") +
   theme(
     axis.text = element_text(size = 12, colour = "black"),
     axis.title = element_text(size = 14),
@@ -2404,7 +2244,6 @@ main_plot2
 ```
 # Figure compilation
 ```{r compilation}
-stop()
 # Saving all ggplot plots
 plots <- c("Rplot2", "Rplot3",
            "Aplot2", "Aplot3",
@@ -2415,14 +2254,6 @@ for(p in plots){
   # Get the actual plot object by name
   plot_obj <- get(p)
   
-  # Save EMF
-  ggsave(
-    filename = file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/Noncombined_emf", paste0(p, ".emf")),
-    plot     = plot_obj,
-    device   = "emf",
-    width    = 7,
-    height   = 5
-  )
   # Save PNG
   ggsave(
     filename = file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/Noncombined_png", paste0(p, ".png")),
@@ -2434,14 +2265,6 @@ for(p in plots){
 }
 
 # Saving MSplot5
-## Save EMF
-ggsave(
-    filename = file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", paste0("MSplot5.emf")),
-    plot     = MSplot5,
-    device   = "emf",
-    width    = 7,
-    height   = 12
-  )
 ## Save PNG
 ggsave(
     filename = file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", paste0("MSplot5.png")),
@@ -2461,12 +2284,6 @@ ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/The
        compression = "lzw")
 
 # Saving nMDSplots (cowplot object) to same folders
-## EMF
-emf(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "nMDSplot1.emf"),
-    width = 7, height = 5)
-print(main_plot)
-dev.off()
-
 ## PNG
 png(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot1.png"),
     width = 7, height = 5, units = "in", res = 600)
@@ -2479,12 +2296,6 @@ tiff(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesi
 print(main_plot)
 dev.off()
 
-## EMF
-emf(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "nMDSplot2.emf"),
-    width = 7, height = 5)
-print(main_plot2)
-dev.off()
-
 ## PNG
 png(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "nMDSplot2.png"),
     width = 7, height = 5, units = "in", res = 600)
@@ -2495,6 +2306,18 @@ dev.off()
 tiff(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "nMDSplot2.tiff"),
      width = 8, height = 6, units = "in", res = 600, compression = "lzw")
 print(main_plot2)
+dev.off()
+
+## PNG
+png(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "outlierplot.png"),
+    width = 7, height = 5, units = "in", res = 600)
+print(outlierDesign)
+dev.off()
+
+## Tiff
+tiff(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "outlierplot.tiff"),
+     width = 8, height = 6, units = "in", res = 600, compression = "lzw")
+print(outlierDesign)
 dev.off()
 
 ## AMSB2 plots - no legends, remove titles, remove x-axis LABEL (but keep text) from top 3, add 10% y-expansion
@@ -2631,8 +2454,6 @@ print(NMDS_plots)
 # Save them
 ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_guild.png"), 
        AMSB2, width = 16, height = 20, units = "cm", dpi = 600)
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_guild.emf"), 
-       AMSB2, width = 16, height = 20, units = "cm", device = "emf")
 ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_guild.tiff"),
        AMSB2, 
        width = 16, 
@@ -2643,8 +2464,6 @@ ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/The
 
 ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_time_patch.png"), 
        AMSB3, width = 16, height = 20, units = "cm", dpi = 600)
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_time_patch.emf"), 
-       AMSB3, width = 16, height = 20, units = "cm", device = "emf")
 ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_time_patch.tiff"),
        AMSB3, 
        width = 16, 
@@ -2655,8 +2474,6 @@ ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/The
 
 ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_png", "Combined_richness.png"), 
        Rcomb, width = 16, height = 10, units = "cm", dpi = 600)
-ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/plots_emf", "Combined_richness.emf"), 
-       Rcomb, width = 16, height = 10, units = "cm", device = "emf")
 ggsave(file.path("C:/Users/jornd/OneDrive - Wageningen University & Research/Thesis/Plots/tiff", "Combined_richness.tiff"),
        Rcomb, 
        width = 16, 
