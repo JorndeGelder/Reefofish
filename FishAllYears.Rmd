@@ -1,7 +1,7 @@
 ---
-title: Msc Thesis: The long-term impact of reef design on herbivorous fish biomass and mean size
+title: Msc Thesis: Low mean size and stable biomass of key herbivore guilds after bleaching across artificial reef designs in Kenya
 author: Jorn de Gelder
-date: 20/2/2026
+date: 27/2/2026
 ---
 # Setup
 ```{r setup}
@@ -782,7 +782,6 @@ aggregate(Radius ~ YearGroup, data = fish_unique,
           FUN = function(x) round(mean(x), 2))
 
 ```
-
 # Load in data (once the above chunk is set to your taste, you only have to run this chunk when starting up again)
 ```{r reload}
 fish <- read_parquet("Fish_Clean.parquet")
@@ -892,9 +891,6 @@ text(x = 23,
      pos = 4)
 
 rm(sum_lm)
-
-# Conclusion: only Depth has a significant and considerable effect as a covariate, omit reef and AR distances here
-
 ```
 ## Statistical models
 ```{r abundance-mod}
@@ -914,7 +910,6 @@ Anova(AmodelNB6) # YearGroup, Patch.type and DietH are all significant. Interact
 Anova(AmodelNB7) # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
 
 # Normality, heteroscedasticity with DHARMa
-Asim_resNB6 <- simulateResiduals(fittedModel = AmodelNB6, re.form = NULL)
 Asim_resNB7 <- simulateResiduals(fittedModel = AmodelNB7, re.form = NULL)
 
 # plot(Asim_resNB6)
@@ -1000,7 +995,6 @@ print("=== Plot 2: Guild comparisons within each YearGroup ===")
 posthoc_diet_between <- pairs(emm_diet, by = "YearGroup", adjust = "sidak",
                              bias.adjust = TRUE,
                              sigma = sigma_re)
-# print(posthoc_diet_between)
 posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
 posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
 print("Significant comparisons:")
@@ -1010,7 +1004,6 @@ print("=== Plot 3: YearGroup comparisons within each Patch type ===")
 posthoc_patch_within <- pairs(emm_patch, by = "Patch.type", adjust = "sidak",
                              bias.adjust = TRUE,
                              sigma = sigma_re)
-# print(posthoc_patch_within)
 posthoc_patch_within_df <- as.data.frame(posthoc_patch_within)
 posthoc_patch_within_sig <- posthoc_patch_within_df[posthoc_patch_within_df$p.value < 0.05, ]
 print("Significant comparisons:")
@@ -1020,7 +1013,6 @@ print("=== Plot 3: Patch type comparisons within each YearGroup ===")
 posthoc_patch_between <- pairs(emm_patch, by = "YearGroup", adjust = "sidak",
                              bias.adjust = TRUE,
                              sigma = sigma_re)
-# print(posthoc_patch_between)
 posthoc_patch_between_df <- as.data.frame(posthoc_patch_between)
 posthoc_patch_between_sig <- posthoc_patch_between_df[posthoc_patch_between_df$p.value < 0.05, ]
 print("Significant comparisons:")
@@ -1144,11 +1136,9 @@ Anova(MSmodelLoglink5) # Here, three way-interaction is significant
 Anova(MSmodelLoglink6) # # YearGroup:DietH is significant. Also consider standalone YearGroup plot.
  
 # Normality & homoscedasticity for DHARMa
-MSsim_resLoglink5 <- simulateResiduals(fittedModel = MSmodelLoglink5, re.form = NULL)
 MSsim_resLoglink6 <- simulateResiduals(fittedModel = MSmodelLoglink6, re.form = NULL)
 
 # plot residuals
-plot(MSsim_resLoglink5)
 plot(MSsim_resLoglink6)
 ```
 
@@ -1224,7 +1214,6 @@ print("=== Plot 2: YearGroup comparisons within each Guild ===")
 posthoc_diet_within <- pairs(emm2, by = "DietH", adjust = "sidak",
                              bias.adjust = TRUE,
                              sigma = sigma_re)
-# print(posthoc_diet_within)
 posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
 posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05, ]
 print("Significant comparisons:")
@@ -1244,7 +1233,6 @@ posthoc_patch <- pairs(emm3, adjust = "sidak",
                        bias.adjust = TRUE,
                        sigma = sigma_re)
 print("=== Plot 3: Patch type comparisons ===")
-# print(posthoc_patch) # <if you want to see all non-significant as well.
 posthoc_patch_df <- as.data.frame(posthoc_patch)
 posthoc_patch_sig <- posthoc_patch_df[posthoc_patch_df$p.value < 0.05, ]
 print("Significant comparisons:")
@@ -1441,7 +1429,6 @@ text(x = 20,
 
 rm(sum_lm)
 ```
-
 ## Statistical models
 ```{r biomass-mod}
 # Version 3: log-link, first testing if Reef and AR distance without reference/control patches is significant
@@ -1464,13 +1451,9 @@ Anova(BmodelLoglink6) # Now DietH, Patch.type and the interaction YearGroup:Diet
 Anova(BmodelLoglink7) # YearGroup:DietH is significant, YearGroup:Patch.type isn't.
  
 # Normality & homoscedasticity for DHARMa
-Bsim_resLoglink4 <- simulateResiduals(fittedModel = BmodelLoglink4, re.form = NULL)
-Bsim_resLoglink6 <- simulateResiduals(fittedModel = BmodelLoglink6, re.form = NULL)
 Bsim_resLoglink7 <- simulateResiduals(fittedModel = BmodelLoglink7, re.form = NULL)
 
 # plot residuals
-plot(Bsim_resLoglink4)
-plot(Bsim_resLoglink6)
 plot(Bsim_resLoglink7)
 ```
 ## Plots and post-hoc
@@ -1539,7 +1522,6 @@ print("=== Plot 2: YearGroup comparisons within each Guild ===")
 posthoc_diet_within <- pairs(emm_diet, by = "DietH", adjust = "sidak",
                              bias.adjust = TRUE,
                              sigma = sigma_re)
-# print(posthoc_diet_within)
 posthoc_diet_within_df <- as.data.frame(posthoc_diet_within)
 posthoc_diet_within_sig <- posthoc_diet_within_df[posthoc_diet_within_df$p.value < 0.05,]
 print("Significant comparisons:")
@@ -1549,7 +1531,6 @@ print("=== Plot 2: Guild comparisons within each YearGroup ===")
 posthoc_diet_between <- pairs(emm_diet, by = "YearGroup", adjust = "sidak",
                               bias.adjust = TRUE,
                               sigma = sigma_re)
-# print(posthoc_diet_between)
 posthoc_diet_between_df <- as.data.frame(posthoc_diet_between)
 posthoc_diet_between_sig <- posthoc_diet_between_df[posthoc_diet_between_df$p.value < 0.05, ]
 print("Significant comparisons:")
@@ -1559,7 +1540,6 @@ print("=== Plot 3: Patch type comparisons ===")
 posthoc_patch <- pairs(emm_patch, adjust = "sidak",
                        bias.adjust = TRUE,
                        sigma = sigma_re)
-# print(posthoc_patch_between)
 posthoc_patch_df <- as.data.frame(posthoc_patch)
 posthoc_patch_sig <- posthoc_patch_df[posthoc_patch_df$p.value < 0.05, ]
 print("Significant comparisons:")
@@ -1672,9 +1652,6 @@ text(x = 23,
      pos = 4)
 
 rm(sum_lm)
-
-# Conclusion: only Depth has a significant and considerable effect as a covariate, omit reef and AR distances here
-
 ```
 ## Statistical models
 ```{r richness-mod}
@@ -1697,21 +1674,10 @@ Anova(RmodelCMP6)
 Anova(RmodelCMP7) # YearGroup:DietH & YearGroup:Patch.type are significant. Also consider standalone YearGroup plot.
 
 # # Normality, heteroscedasticity with DHARMa
-Rsim_resCMP5 <- simulateResiduals(fittedModel = RmodelCMP5, re.form = NULL)
-Rsim_resCMP6 <- simulateResiduals(fittedModel = RmodelCMP6, re.form = NULL)
 Rsim_resCMP7 <- simulateResiduals(fittedModel = RmodelCMP7, re.form = NULL)
 
 # # plot residuals
-plot(Rsim_resCMP5)
-plot(Rsim_resCMP6)
 plot(Rsim_resCMP7)
-testResiduals(Rsim_resCMP5)
-
-testZeroInflation(Rsim_resCMP5) # <- Not significant
-testCategorical(Rsim_resCMP5, catPred = Richness$Depth.MLLW)
-testCategorical(Rsim_resCMP5, catPred = Richness$YearGroup)
-testCategorical(Rsim_resCMP5, catPred = Richness$Patch.type)
-testCategorical(Rsim_resCMP5, catPred = Richness$DietH)
 ```
 
 ## Plots & post-hoc
@@ -1862,6 +1828,7 @@ fishdata <- as.numeric(length(BiomassNMDS))
 BiomassNMDS_data <- BiomassNMDS[2:(fishdata-metadata+1)]
 rm(survey_meta)
 
+# Datapoint 147 heavily distorts all other points due to anomaly
 BiomassNMDS_exclOUT <- BiomassNMDS[-c(147), ]
 BiomassNMDS_data_exclOUT <- BiomassNMDS_data[-c(147), ]
 ```
